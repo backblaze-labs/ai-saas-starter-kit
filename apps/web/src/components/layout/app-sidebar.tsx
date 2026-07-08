@@ -10,6 +10,7 @@ import {
   Sparkles,
   UserRound,
   CreditCard,
+  Wand2,
   LogOut,
 } from "lucide-react";
 import {
@@ -29,6 +30,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 
 const navItems = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
+  { title: "Generate", href: "/generate", icon: Wand2 },
   { title: "Upload", href: "/upload", icon: Upload },
   { title: "Files", href: "/files", icon: FolderOpen },
   { title: "Billing", href: "/billing", icon: CreditCard },

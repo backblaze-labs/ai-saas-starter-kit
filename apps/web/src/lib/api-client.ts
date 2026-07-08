@@ -3,6 +3,7 @@ import type {
   Entitlements,
   FileMetadata,
   FileUploadResponse,
+  GenerationJob,
   Plan,
   Subscription,
   UploadStats,
@@ -284,4 +285,23 @@ export async function createPortal() {
  */
 export async function getProPreview() {
   return apiFetch<{ unlocked: boolean; message: string }>("/billing/pro/preview");
+}
+
+// --- Generation ------------------------------------------------------------
+
+/**
+ * Run one text-to-image generation. Pro-gated: throws ApiError 402 for Free,
+ * 503 when NVIDIA isn't configured. On success the assets are already in B2.
+ */
+export async function generateImage(prompt: string, seed?: number | null) {
+  return apiFetch<GenerationJob>("/generation/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, seed: seed ?? null }),
+  });
+}
+
+/** The caller's generation jobs (newest first), each with its generated assets. */
+export async function getGenerationJobs() {
+  return apiFetch<GenerationJob[]>("/generation/jobs");
 }

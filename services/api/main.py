@@ -18,7 +18,15 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
 from app.config import settings  # noqa: E402
-from app.runtime import auth, billing, files, health, metrics, upload  # noqa: E402
+from app.runtime import (  # noqa: E402
+    auth,
+    billing,
+    files,
+    generation,
+    health,
+    metrics,
+    upload,
+)
 
 # --- Startup validation ---
 # Required B2 settings are declared with empty-string defaults so that
@@ -171,4 +179,5 @@ app.include_router(auth.router, tags=["auth"])
 app.include_router(billing.router)
 app.include_router(upload.router, tags=["upload"])
 app.include_router(files.router, tags=["files"])
+app.include_router(generation.router)
 app.include_router(metrics.router, tags=["metrics"])

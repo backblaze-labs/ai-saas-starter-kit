@@ -99,6 +99,30 @@ def test_stripe_only_in_repo():
     assert violations == [], "stripe boundary violations:\n" + "\n".join(violations)
 
 
+def test_genblaze_only_in_repo():
+    """Verify the Genblaze SDK is only imported in app/repo/ (external-SDK rule).
+
+    All provider-orchestration imports (genblaze_core / genblaze_nvidia /
+    genblaze_s3) must live only in app/repo/generation_pipeline.py, mirroring the
+    boto3 rule — the service/runtime layers consume plain dicts, never Genblaze
+    types. This is a clean-install guard: a genblaze import leaking upward would
+    couple higher layers to the SDK.
+    """
+    violations = []
+    for layer in LAYER_ORDER:
+        if layer == "repo":
+            continue
+        layer_dir = APP_ROOT / layer
+        if not layer_dir.exists():
+            continue
+        for pyfile in _get_python_files(layer_dir):
+            for imp in _get_imports(pyfile):
+                if imp == "genblaze" or imp.startswith("genblaze_") or imp.startswith("genblaze."):
+                    rel = pyfile.relative_to(APP_ROOT.parent)
+                    violations.append(f"{rel}: genblaze imported outside repo/ ({imp})")
+    assert violations == [], "genblaze boundary violations:\n" + "\n".join(violations)
+
+
 def test_file_size_limits():
     """Verify no Python file exceeds 300 lines."""
     violations = []

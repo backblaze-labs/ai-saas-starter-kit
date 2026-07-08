@@ -10,6 +10,14 @@ Pillow>=11.0.0
 PyPDF2>=3.0.0
 httpx>=0.27.0
 stripe>=11.0.0,<13.0.0
+# Genblaze SDK — AI media generation via NVIDIA NIM, written to B2. Pinned with
+# upper bounds: unpinned genblaze-* is a false green (boots + tests pass, but the
+# marquee generation feature can break on a clean install against a newer API).
+# All three must stay on the same 0.3.x line (genblaze-nvidia requires
+# genblaze-core>=0.3.4,<0.4).
+genblaze-core>=0.3.4,<0.4
+genblaze-nvidia>=0.3.1,<0.4
+genblaze-s3>=0.3.4,<0.4
 
 # Dev / quality
 ruff>=0.8.0

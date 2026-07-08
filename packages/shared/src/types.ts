@@ -89,3 +89,39 @@ export interface Entitlements {
   active: boolean;
   can_generate: boolean;
 }
+
+// --- Generation ------------------------------------------------------------
+
+export type GenerationStatus = "running" | "succeeded" | "failed";
+
+export interface GenerateRequest {
+  prompt: string;
+  seed?: number | null;
+}
+
+export interface GeneratedAsset {
+  key: string;
+  url: string | null;
+  sha256: string | null;
+  media_type: string;
+  size_bytes: number | null;
+  width: number | null;
+  height: number | null;
+}
+
+export interface GenerationJob {
+  id: string;
+  user_id: string;
+  prompt: string;
+  provider: string;
+  model: string;
+  status: GenerationStatus;
+  error: string | null;
+  seed: number | null;
+  run_id: string | null;
+  manifest_uri: string | null;
+  canonical_hash: string | null;
+  cost_usd: number | null;
+  assets: GeneratedAsset[];
+  created_at: string | null;
+}

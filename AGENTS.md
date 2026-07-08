@@ -64,6 +64,7 @@ When this repo is used as the foundation for a new app, the following pieces are
 |------|-------------|
 | No backward imports | `tests/test_structure.py::test_no_backward_imports` |
 | No boto3 outside repo/ | `tests/test_structure.py::test_boto3_only_in_repo` |
+| No genblaze_* outside repo/ | `tests/test_structure.py::test_genblaze_only_in_repo` |
 | File size < 300 lines | `tests/test_structure.py::test_file_size_limits` |
 | All layers exist | `tests/test_structure.py::test_all_layers_exist` |
 | No bare print() | `ruff` rule T20 |

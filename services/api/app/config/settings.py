@@ -33,6 +33,21 @@ class Settings(BaseSettings):
     billing_cancel_url: str = "http://localhost:3000/billing?checkout=cancelled"
     billing_portal_return_url: str = "http://localhost:3000/billing"
 
+    # AI media generation via NVIDIA NIM (orchestrated by the Genblaze SDK).
+    # Optional to boot: the /generation endpoint returns a clean 503 when the
+    # key is missing, so the auth + billing + file-manager scaffold runs without
+    # it. Get a free key (with starter credits) at https://build.nvidia.com.
+    # The model + image params are env-configurable; flux.1-schnell is a fast,
+    # cheap 4-step distilled model — a good default for a demo.
+    nvidia_api_key: str = ""
+    nvidia_image_model: str = "black-forest-labs/flux.1-schnell"
+    generation_width: int = 1024
+    generation_height: int = 1024
+    generation_steps: int = 4
+    generation_run_timeout: int = 120
+    # B2 key prefix for generated assets: generated/{user_id}/{date}/{run_id}/...
+    generation_prefix: str = "generated"
+
     api_port: int = 8000
     # Explicit allowlist by default — covers Next on :3000 and the
     # fallback :3001 it picks if 3000 is busy. Production deploys should

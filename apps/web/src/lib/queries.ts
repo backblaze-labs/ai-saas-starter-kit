@@ -6,9 +6,11 @@ import {
   createCheckout,
   createPortal,
   deleteFile,
+  generateImage,
   getEntitlements,
   getFiles,
   getFileStats,
+  getGenerationJobs,
   getMe,
   getPlans,
   getPreviewUrl,
@@ -20,6 +22,7 @@ import {
 import type {
   Entitlements,
   FileMetadata,
+  GenerationJob,
   Plan,
   Subscription,
 } from "@ai-media-saas-starter/shared";
@@ -40,6 +43,7 @@ export const qk = {
   subscription: () => [...qk.all, "subscription"] as const,
   entitlements: () => [...qk.all, "entitlements"] as const,
   proPreview: () => [...qk.all, "proPreview"] as const,
+  generationJobs: () => [...qk.all, "generationJobs"] as const,
 };
 
 export function useFiles(prefix = "", limit = 100) {
@@ -152,6 +156,30 @@ export function usePortal() {
     mutationFn: () => createPortal(),
     onSuccess: ({ url }) => {
       window.location.href = url;
+    },
+  });
+}
+
+// --- Generation ------------------------------------------------------------
+
+// A user's generation jobs, newest first (each with its generated assets).
+export function useGenerationJobs(enabled = true) {
+  return useQuery<GenerationJob[], ApiError>({
+    queryKey: qk.generationJobs(),
+    queryFn: getGenerationJobs,
+    enabled,
+  });
+}
+
+// Run one text-to-image generation. On success we invalidate the job list AND
+// the file caches — the new asset also lands in the B2-backed file manager.
+export function useGenerate() {
+  const qc = useQueryClient();
+  return useMutation<GenerationJob, ApiError, { prompt: string; seed?: number | null }>({
+    mutationFn: ({ prompt, seed }) => generateImage(prompt, seed),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.generationJobs() });
+      qc.invalidateQueries({ queryKey: qk.all });
     },
   });
 }
