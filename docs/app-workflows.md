@@ -14,6 +14,17 @@ User journeys inside the application.
 - The first user to sign up is an admin
 - See: [Authentication](features/authentication.md)
 
+## Subscribe & Manage Billing
+
+- User navigates to `/billing`, sees Free / Pro / Team plan cards and their current plan
+- Clicking **Upgrade** starts a Stripe Checkout Session and redirects to Stripe
+- Paying with the test card `4242 4242 4242 4242` returns to `/billing?checkout=success`
+- Stripe's webhook syncs the subscription into Supabase; the plan badge updates to the new tier
+- Pro-only surfaces (e.g. AI media generation) unlock once the tier is Pro or higher
+- **Manage billing** opens the Stripe Billing Portal to change or cancel the plan
+- A Free user sees the Pro feature preview card in a locked state
+- See: [Billing](features/billing.md)
+
 ## Upload Files
 
 - User navigates to `/upload`

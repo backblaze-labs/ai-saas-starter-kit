@@ -6,6 +6,7 @@
 - **apps/web/** — Next.js 16 frontend (App Router, Tailwind v4, shadcn/ui)
   - Supabase auth: sign in/up, `/account`, session refresh + route protection via `proxy.ts`
   - Route groups: `(app)` (authenticated shell) and `(auth)` (chrome-free sign-in/up)
+  - Stripe billing: `/billing` plan catalog, Checkout/Portal redirects, plan-gated surfaces
   - Dashboard with stats, upload chart, recent uploads
   - File upload with drag-and-drop, progress tracking
   - File browser with preview, download, delete
@@ -13,6 +14,7 @@
 - **services/api/** — FastAPI backend (layered architecture)
   - REST API for file upload, listing, deletion
   - B2 S3 integration via boto3
+  - Stripe billing: checkout/portal sessions, signature-verified webhook → Supabase sync, `require_plan` gate
   - File metadata extraction (images, PDFs)
   - Health check endpoint with B2 connectivity verification
   - Structured JSON logging with request tracing
@@ -81,6 +83,9 @@ services/api/
   - File listing and metadata via S3 `list_objects_v2` / `head_object`
 - **Supabase Postgres** — auth + application database
   - `auth.users` (managed by Supabase) plus `public.profiles` (1:1) and `public.roles`
+  - Billing: `public.plans` (catalog), `public.subscriptions` (one synced row/user),
+    `public.stripe_events` (webhook idempotency) — subscription rows are written only
+    by the webhook via the service role (RLS lets a user read only their own)
   - Row Level Security scopes reads/writes to the owning user (admins see all)
   - Schema lives in `supabase/migrations/`; local dev runs the full stack via `supabase start`
 
@@ -88,6 +93,7 @@ services/api/
 
 - **Backblaze B2 S3 API** — file storage, retrieval, deletion, presigned URLs
 - **Supabase** — authentication (GoTrue) + Postgres/PostgREST; local or hosted, config-only swap
+- **Stripe** — subscription billing (Checkout, Billing Portal, webhooks); test-mode for local dev
 
 ## Trust Boundaries
 
@@ -100,6 +106,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 ## Data Flows
 
 - **Auth**: Browser -> Supabase (sign up/in) -> confirm via `/auth/confirm` -> cookie session; `proxy.ts` refreshes it per request and redirects unauthenticated users to `/signin`. API calls carry the token; the API validates it against Supabase (`repo/supabase_auth.py`).
+- **Billing**: Browser -> `POST /billing/checkout` -> Stripe Checkout (redirect) -> Stripe -> `POST /billing/webhook` (signature-verified) -> `service/billing.py` upserts the subscription into Supabase (service role). `require_plan(min_tier)` reads the derived entitlements and 402s below the required tier.
 - **Upload**: Browser -> `POST /upload` (multipart) -> API validates -> service orchestrates -> repo writes to B2 -> metadata extracted -> response
 - **List**: Browser -> `GET /files` -> service calls repo -> returns file list
 - **Download**: Browser -> `GET /files/{key}/download` -> service validates key -> repo generates presigned URL -> browser downloads
@@ -118,6 +125,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 - Service orchestration: `services/api/app/service/upload.py`
 - B2 data access (repo layer): `services/api/app/repo/b2_client.py`
 - Pydantic models: `services/api/app/types/` (`files.py`, `upload.py`, `stats.py`, `formatting.py`)
+- Billing (layered): `services/api/app/runtime/billing.py` → `service/billing.py` → `repo/{stripe_client,supabase_billing}.py`
 - Config (pydantic-settings): `services/api/app/config/settings.py`
 - Structural tests: `services/api/tests/test_structure.py`
 - Frontend API client: `apps/web/src/lib/api-client.ts`
@@ -126,6 +134,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 ## Core Features
 
 - [Authentication](docs/features/authentication.md)
+- [Billing](docs/features/billing.md)
 - [File Upload](docs/features/file-upload.md)
 - [File Browser](docs/features/file-browser.md)
 - [Dashboard](docs/features/dashboard.md)

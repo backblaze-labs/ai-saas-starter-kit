@@ -9,6 +9,7 @@ Security principles and implementation for the ai-media-saas-starter.
 - **API -> B2**: Authenticated via `B2_APPLICATION_KEY_ID` + `B2_APPLICATION_KEY`, signature v4
 - **Client -> B2**: Presigned URLs for download (10-min expiry, `Content-Disposition: attachment`)
 - **Client/API -> Supabase**: browser holds a cookie session (anon/publishable key only); the API validates tokens against Supabase and never ships the service-role key to the client
+- **Stripe -> API webhook**: `POST /billing/webhook` is unauthenticated by bearer token — it is authenticated by verifying the `Stripe-Signature` header against `STRIPE_WEBHOOK_SECRET` (a bad/absent signature is rejected `400`). Events are deduped via `public.stripe_events` so a replayed event is a no-op.
 
 ## Authentication & Authorization
 
@@ -57,6 +58,9 @@ Security principles and implementation for the ai-media-saas-starter.
 - All secrets loaded via environment variables (pydantic-settings)
 - Never committed to source control
 - `.env.example` documents required variables without values
+- Stripe keys (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`) are server-only. The frontend
+  never talks to Stripe directly — it redirects to Checkout/Portal URLs the backend mints —
+  so no Stripe key reaches the client.
 
 ## Agent Security Rules
 

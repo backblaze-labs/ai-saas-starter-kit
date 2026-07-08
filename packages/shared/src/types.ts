@@ -57,3 +57,35 @@ export interface UploadStats {
   uploads_today: number;
   total_downloads: number;
 }
+
+// --- Billing ---------------------------------------------------------------
+
+export type PlanTier = "free" | "pro" | "team";
+
+export interface Plan {
+  id: PlanTier;
+  name: string;
+  rank: number;
+  price_cents: number;
+  currency: string;
+  interval: string;
+  features: string[];
+  is_public: boolean;
+}
+
+export interface Subscription {
+  user_id: string;
+  plan_id: PlanTier;
+  status: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+}
+
+export interface Entitlements {
+  tier: PlanTier;
+  rank: number;
+  active: boolean;
+  can_generate: boolean;
+}

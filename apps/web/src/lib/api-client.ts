@@ -1,7 +1,10 @@
 import type {
   DailyUploadCount,
+  Entitlements,
   FileMetadata,
   FileUploadResponse,
+  Plan,
+  Subscription,
   UploadStats,
 } from "@ai-media-saas-starter/shared";
 import { createClient } from "./supabase/client";
@@ -241,4 +244,44 @@ export type Me = { id: string; email: string | null; role: string };
 /** The authenticated identity as validated by the FastAPI backend (GET /me). */
 export async function getMe() {
   return apiFetch<Me>("/me");
+}
+
+// --- Billing ---------------------------------------------------------------
+
+/** Public plan catalog (Free/Pro/Team). */
+export async function getPlans() {
+  return apiFetch<Plan[]>("/billing/plans");
+}
+
+/** The caller's current subscription (synthesised Free when never subscribed). */
+export async function getSubscription() {
+  return apiFetch<Subscription>("/billing/subscription");
+}
+
+/** The caller's derived entitlements (tier + feature flags). */
+export async function getEntitlements() {
+  return apiFetch<Entitlements>("/billing/entitlements");
+}
+
+/** Start a Stripe Checkout Session for a plan; returns the hosted checkout URL. */
+export async function createCheckout(planId: string) {
+  return apiFetch<{ url: string }>("/billing/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plan_id: planId }),
+  });
+}
+
+/** Open the Stripe Billing Portal; returns the hosted portal URL. */
+export async function createPortal() {
+  return apiFetch<{ url: string }>("/billing/portal", { method: "POST" });
+}
+
+/**
+ * Pro-gated demo endpoint. Resolves when the caller is on Pro/Team, and throws
+ * an ApiError with status 402 for Free — the Billing page uses that to render
+ * the locked vs. unlocked state.
+ */
+export async function getProPreview() {
+  return apiFetch<{ unlocked: boolean; message: string }>("/billing/pro/preview");
 }

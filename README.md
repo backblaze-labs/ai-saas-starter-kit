@@ -144,7 +144,11 @@ node scripts/sync-supabase-env.mjs   # writes the local Supabase keys into .env
 
 > ⚠️ **Hosted admin:** the first user to sign up is auto-promoted to admin (handy locally). On a public hosted deploy, sign up yourself first, or remove the auto-promote branch in the migration and grant admin manually. See [docs/SECURITY.md](docs/SECURITY.md).
 
-**5. Run it**
+**5. Set up Stripe billing (optional)**
+
+Billing is powered by [Stripe](https://stripe.com). The app boots fine without it — the billing endpoints just return `503` and the file manager works unchanged — so you can skip this and come back later. To enable it, grab **test-mode** keys from the [Stripe Dashboard](https://dashboard.stripe.com/test/apikeys), create a recurring Price for each paid plan, and fill `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO`, and `STRIPE_PRICE_TEAM` in `.env` (see `.env.example`). Forward webhooks to your local API with the [Stripe CLI](https://stripe.com/docs/stripe-cli): `stripe listen --forward-to localhost:8000/billing/webhook`. Test with card `4242 4242 4242 4242`.
+
+**6. Run it**
 
 ```bash
 pnpm dev
@@ -160,6 +164,7 @@ When you adapt this kit for a new app, keep the shared scaffolding and only swap
 
 - **Keep** the UI kit (`apps/web/src/components/ui/` + design tokens in `globals.css` + `/design`).
 - **Keep** the auth layer (Supabase sign in/up, protected routes, `/account`, roles/admin) — it's the reusable SaaS foundation.
+- **Keep** the billing layer (Stripe Checkout/Portal, `/billing`, plans, webhook sync, and the `require_plan` gate) — swap the plan definitions/prices for your product, not the plumbing.
 - **Keep** the File Explorer (`/files`) and Upload (`/upload`) pages and their sidebar nav entries — they're the reusable B2-backed surface.
 - **Adapt** the Dashboard (`/`) to your use case — replace the default stats, chart, and recent uploads with metrics that reflect what your app actually does.
 - **Rebrand** by editing a single file: `apps/web/src/lib/app-config.ts` holds the app name and description (`APP_NAME`, `APP_DESCRIPTION`). Changing them there updates the page title, sidebar, and breadcrumb everywhere — no other files to touch.
@@ -169,6 +174,7 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 ## Core Features
 
 - [Authentication](docs/features/authentication.md) — Supabase email/password + email-code (OTP) sign-in, protected routes, profiles, and an admin role
+- [Billing](docs/features/billing.md) — Stripe Checkout + Billing Portal, Free/Pro/Team plans, webhook→Supabase sync, and plan-gating (`require_plan`)
 - [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress
 - [File Browser](docs/features/file-browser.md) — list, preview, download, delete files
 - [Dashboard](docs/features/dashboard.md) — stats cards, upload chart, recent uploads
@@ -188,6 +194,7 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 - TanStack Query — caching, dedup, retry, stale-while-revalidate for every fetch
 - Python 3.11+, FastAPI, boto3, Pydantic v2, Pillow, PyPDF2, httpx
 - Supabase (auth + Postgres; `@supabase/ssr` for cookie-based sessions)
+- Stripe (subscriptions, Checkout, Billing Portal, webhooks)
 - Backblaze B2 (S3-compatible object storage)
 - pnpm workspaces (monorepo)
 
@@ -211,7 +218,7 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 |-----|---------|
 | [AGENTS.md](AGENTS.md) | Agent table of contents — start here |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System layout, layering, data flows |
-| [docs/features/](docs/features/) | Feature docs (auth, upload, browser, dashboard, metadata) |
+| [docs/features/](docs/features/) | Feature docs (auth, billing, upload, browser, dashboard, metadata) |
 | [docs/design-system.md](docs/design-system.md) | Design tokens, primitives, AI elements, loader, error/empty states |
 | [docs/app-workflows.md](docs/app-workflows.md) | User journeys |
 | [docs/dev-workflows.md](docs/dev-workflows.md) | Engineering workflows and testing |

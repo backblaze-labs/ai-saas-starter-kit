@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
 from app.config import settings  # noqa: E402
-from app.runtime import auth, files, health, metrics, upload  # noqa: E402
+from app.runtime import auth, billing, files, health, metrics, upload  # noqa: E402
 
 # --- Startup validation ---
 # Required B2 settings are declared with empty-string defaults so that
@@ -48,11 +48,15 @@ PLACEHOLDER_VALUES = frozenset({
     "your_region",
 })
 
-# Supabase powers auth; the URL + anon key are the minimum to validate sessions.
-# The service-role key is only needed by the admin slice, so it is not gated here.
+# Supabase powers auth; the URL + anon key validate sessions. The service-role
+# key is required too: the billing slice reads/writes plans + subscriptions with
+# it on every billing request (webhook sync bypasses RLS, and plan-gating reads
+# run without the caller's token). `supabase start` prints it and
+# `scripts/sync-supabase-env.mjs` writes it into .env.
 REQUIRED_SUPABASE_SETTINGS = (
     ("supabase_url", "SUPABASE_URL"),
     ("supabase_anon_key", "SUPABASE_ANON_KEY"),
+    ("supabase_service_role_key", "SUPABASE_SERVICE_ROLE_KEY"),
 )
 
 
@@ -164,6 +168,7 @@ app.add_middleware(
 
 app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, tags=["auth"])
+app.include_router(billing.router)
 app.include_router(upload.router, tags=["upload"])
 app.include_router(files.router, tags=["files"])
 app.include_router(metrics.router, tags=["metrics"])

@@ -9,6 +9,7 @@ import {
   Settings,
   Sparkles,
   UserRound,
+  CreditCard,
   LogOut,
 } from "lucide-react";
 import {
@@ -30,6 +31,7 @@ const navItems = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Upload", href: "/upload", icon: Upload },
   { title: "Files", href: "/files", icon: FolderOpen },
+  { title: "Billing", href: "/billing", icon: CreditCard },
   { title: "Account", href: "/account", icon: UserRound },
   { title: "Settings", href: "/settings", icon: Settings },
 ];

@@ -12,10 +12,26 @@ class Settings(BaseSettings):
     # Supabase (auth + Postgres). Identical shape for local (`supabase start`)
     # and hosted projects — only the URL/keys differ, so swapping environments is
     # config-only. The service-role key is server-only and must never reach the
-    # browser; it is unused until the admin slice, hence not required to boot.
+    # browser; the billing slice uses it for every plans/subscriptions read/write,
+    # so it is required at startup (see main.py).
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
+
+    # Stripe billing. All optional to boot: billing endpoints return a clean 503
+    # when a key is missing, so the auth + file-manager scaffold runs without
+    # Stripe configured. Test-mode keys look like sk_test_… / whsec_…; get them
+    # from the Stripe Dashboard in test mode. Price IDs are account-specific and
+    # map a plan tier to a recurring Price in your Stripe product catalog.
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_pro: str = ""
+    stripe_price_team: str = ""
+    # Where Stripe returns the browser after checkout / portal. Point these at
+    # your deployed frontend origin in production.
+    billing_success_url: str = "http://localhost:3000/billing?checkout=success"
+    billing_cancel_url: str = "http://localhost:3000/billing?checkout=cancelled"
+    billing_portal_return_url: str = "http://localhost:3000/billing"
 
     api_port: int = 8000
     # Explicit allowlist by default — covers Next on :3000 and the
