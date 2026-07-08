@@ -1,0 +1,25 @@
+{
+  "name": "ai-media-saas-starter",
+  "private": true,
+  "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "predev": "node scripts/doctor.mjs",
+    "dev": "sh scripts/dev.sh",
+    "dev:web": "pnpm --filter @ai-media-saas-starter/web dev",
+    "dev:api": "cd services/api && .venv/bin/uvicorn main:app --reload --port ${API_PORT:-8000}",
+    "build": "pnpm --filter @ai-media-saas-starter/web build",
+    "typecheck": "pnpm --filter @ai-media-saas-starter/web typecheck",
+    "lint": "pnpm --filter @ai-media-saas-starter/web lint",
+    "lint:api": "cd services/api && .venv/bin/ruff check .",
+    "test:api": "cd services/api && .venv/bin/python -m pytest",
+    "check:structure": "cd services/api && .venv/bin/python -m pytest tests/test_structure.py -v",
+    "test:e2e": "pnpm --filter @ai-media-saas-starter/web exec playwright test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}

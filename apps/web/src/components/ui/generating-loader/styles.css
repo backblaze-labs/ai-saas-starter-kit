@@ -1,0 +1,187 @@
+/* --- Generating loader ("blaze pulse") ---
+   Center: a flame field built from many vertical scanlines in mixed
+   colors (red, amber, yellow, and flame-gradient lines that fade
+   through the palette as they rise) — or, in the "stars" variant, a
+   few AI sparkles (4-point stars) that pop in, rotate, and vanish at
+   staggered interior positions. Around: a perforated rotating dot
+   ring at the perimeter. See ./index.tsx.
+
+   Host CSS variables this loader depends on (defined by the host
+   app's theme — Tailwind v4 / shadcn-style globals.css):
+     --muted-foreground   — perforated ring dot color
+     --foreground         — label sweep color
+     --background         — scrim background
+   The blaze-* palette (red/orange/amber/yellow) is self-contained
+   below and scoped to .blaze-orb. */
+
+.blaze-orb {
+  --blaze-red: #D30035;
+  --blaze-orange: #f97316;
+  --blaze-amber: #f59e0b;
+  --blaze-yellow: #facc15;
+}
+
+/* Rising scanlines — vertical lift with subtle horizontal jitter; the
+   per-line max opacity --scan-o multiplies through every keyframe so
+   lighter (yellow/amber) lines stay quieter than the red core line. */
+@keyframes blaze-rise {
+  0%   { transform: translate(0, 100%);     opacity: 0; }
+  10%  { transform: translate(0, 88%);      opacity: calc(0.85 * var(--scan-o, 1)); }
+  35%  { transform: translate(-1.5px, 55%); opacity: var(--scan-o, 1); }
+  60%  { transform: translate(1.5px, 18%);  opacity: calc(0.9 * var(--scan-o, 1)); }
+  85%  { transform: translate(0, -28%);     opacity: calc(0.55 * var(--scan-o, 1)); }
+  100% { transform: translate(0, -100%);    opacity: 0; }
+}
+
+/* Slow rotation for the perforated dot ring at the perimeter. */
+@keyframes blaze-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* AI sparkle — pop in, scale + rotate, vanish. */
+@keyframes blaze-sparkle {
+  0%, 100% { opacity: 0; transform: rotate(0deg)   scale(0); }
+  20%      { opacity: 0.5; }
+  50%      { opacity: 1; transform: rotate(180deg) scale(1); }
+  80%      { opacity: 0.4; }
+}
+
+/* Continuous spinning sparkle — used at sm size (button context). */
+@keyframes blaze-sparkle-spin {
+  0%   { transform: rotate(0deg)   scale(0.85); opacity: 0.75; }
+  50%  { transform: rotate(180deg) scale(1);    opacity: 1; }
+  100% { transform: rotate(360deg) scale(0.85); opacity: 0.75; }
+}
+
+@keyframes blaze-shimmer {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+/* Vertical scan line — color comes from --scan-color (red/amber/yellow).
+   The .flame variant overrides background with a vertical multi-stop
+   gradient that fades through red → orange → amber → yellow → transparent,
+   so the line itself reads as a tiny flame as it rises. */
+.blaze-scanline {
+  position: absolute;
+  bottom: 0;
+  /* Use absolute pixel offset relative to parent center — translate %
+     on a 1px element resolves to fractions of a pixel (broken). */
+  left: calc(50% + var(--scan-x, 0px));
+  width: 1px;
+  height: 100%;
+  margin-left: -0.5px;
+  background: linear-gradient(
+    to top,
+    transparent 0%,
+    var(--scan-color, var(--blaze-red)) 22%,
+    var(--scan-color, var(--blaze-red)) 65%,
+    transparent 100%
+  );
+  animation: blaze-rise var(--rise-dur, 1.8s) linear infinite;
+  animation-delay: var(--rise-delay, 0s);
+  will-change: transform, opacity;
+}
+.blaze-scanline.flame {
+  background: linear-gradient(
+    to top,
+    transparent 0%,
+    color-mix(in oklab, var(--blaze-red) 80%, transparent) 12%,
+    var(--blaze-red) 28%,
+    var(--blaze-orange) 48%,
+    var(--blaze-amber) 68%,
+    color-mix(in oklab, var(--blaze-yellow) 70%, transparent) 86%,
+    transparent 100%
+  );
+}
+
+/* Perforated dot ring — many tightly-spaced gray dots around the orb's
+   perimeter that rotate together. Per-dot opacity is a gentle ramp so
+   motion is perceptible but the ring still reads as a perforation, not
+   a comet. */
+.blaze-sweep {
+  animation: blaze-spin 2.4s linear infinite;
+  transform-origin: 50% 50%;
+}
+.blaze-sweep-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--dot-size, 1.5px);
+  height: var(--dot-size, 1.5px);
+  border-radius: 999px;
+  background: var(--muted-foreground);
+  transform:
+    translate(-50%, -50%)
+    rotate(calc(var(--i) * (360deg / var(--n))))
+    translateY(calc(-1 * var(--orbit-r, 22px)));
+}
+
+/* AI sparkle — outer span centers the SVG on its top/left anchor; inner
+   SVG runs the rotate/scale animation around its own center. */
+.blaze-sparkle-pos {
+  position: absolute;
+  width: var(--sparkle-size, 8px);
+  height: var(--sparkle-size, 8px);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.blaze-sparkle {
+  width: 100%;
+  height: 100%;
+  color: var(--blaze-amber);
+  filter: drop-shadow(0 0 2px color-mix(in oklab, var(--blaze-amber) 55%, transparent));
+  transform-origin: 50% 50%;
+  animation: blaze-sparkle var(--sparkle-dur, 2s) ease-in-out infinite;
+  animation-delay: var(--sparkle-delay, 0s);
+}
+.blaze-sparkle.yellow {
+  color: var(--blaze-yellow);
+  filter: drop-shadow(0 0 2px color-mix(in oklab, var(--blaze-yellow) 55%, transparent));
+}
+.blaze-sparkle.white {
+  color: #ffffff;
+  /* Two shadows so white sparkles read on both light and dark backgrounds:
+     a soft halo for dark, a faint dark stroke for light. */
+  filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, 0.7))
+          drop-shadow(0 0 1px rgba(0, 0, 0, 0.25));
+}
+.blaze-sparkle.continuous {
+  animation: blaze-sparkle-spin var(--sparkle-dur, 1.5s) linear infinite;
+}
+
+/* Shimmer label — sweep tinted with brand red, only when label is set. */
+.blaze-label {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 0%,
+    color-mix(in oklab, var(--blaze-red) 65%, var(--foreground)) 40%,
+    var(--muted-foreground) 80%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+  animation: blaze-shimmer 2.2s linear infinite;
+}
+
+/* Scrim used when an existing image is being iterated on. */
+.blaze-scrim {
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in oklab, var(--background) 40%, transparent) 0%,
+    color-mix(in oklab, var(--background) 70%, transparent) 100%
+  );
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blaze-sweep,
+  .blaze-scanline,
+  .blaze-sparkle,
+  .blaze-label {
+    animation: none;
+  }
+}

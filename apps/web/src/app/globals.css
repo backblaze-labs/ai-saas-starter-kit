@@ -1,0 +1,499 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-attention: var(--attention);
+  --color-attention-subtle: var(--attention-subtle);
+  --color-accent-subtle: var(--accent-subtle);
+  --font-sans: var(--font-sans-stack);
+  --font-display: var(--font-display), var(--font-sans-stack);
+  --font-mono: var(--font-mono-stack);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-nav: var(--nav);
+  --color-nav-foreground: var(--nav-foreground);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-2xl: calc(var(--radius) + 6px);
+  --radius-3xl: calc(var(--radius) + 10px);
+  --radius-4xl: calc(var(--radius) + 14px);
+}
+
+:root {
+  --font-sans-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+    Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono-stack: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Base palette */
+  --radius: 0.5rem; /* 8px */
+  --background: #ffffff;
+  --foreground: #1f2328;
+  --card: #ffffff;
+  --card-foreground: #1f2328;
+  --popover: #ffffff;
+  --popover-foreground: #1f2328;
+  --primary: #0969da;
+  --primary-foreground: #ffffff;
+  --secondary: #f6f8fa;
+  --secondary-foreground: #1f2328;
+  --muted: #f6f8fa;
+  --muted-foreground: #59636e;
+  --accent: #eaeef2;
+  --accent-foreground: #1f2328;
+  --destructive: #cf222e;
+  --border: #e3e8ee;
+  --input: #e3e8ee;
+  --ring: #0969da;
+  --nav: #0d1117;
+  --nav-foreground: #f0f6fc;
+  --chart-1: #0969da;
+  --chart-2: #1a7f37;
+  --chart-3: #bf8700;
+  --chart-4: #cf222e;
+  --chart-5: #8250df;
+  --sidebar: #f6f8fa;
+  --sidebar-foreground: #1f2328;
+  --sidebar-primary: #0969da;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eaeef2;
+  --sidebar-accent-foreground: #1f2328;
+  --sidebar-border: #e3e8ee;
+  --sidebar-ring: #0969da;
+
+  /* Semantic accents */
+  --success: #1a7f37;
+  --success-subtle: #dafbe1;
+  --attention: #9a6700;
+  --attention-subtle: #fff8c5;
+  --accent-subtle: #ddf4ff;
+
+  /* Elevation — gentle shadows, barely there at rest. */
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --shadow-card: 0 1px 2px rgba(31, 35, 40, 0.04);
+  --shadow-small: 0 1px 0 rgba(31, 35, 40, 0.04);
+  --shadow-medium: 0 3px 6px rgba(140, 149, 159, 0.15);
+  --shadow-large: 0 8px 24px rgba(140, 149, 159, 0.2);
+  --shadow-xl: 0 12px 48px rgba(66, 74, 83, 0.25);
+  --shadow-hover: 0 1px 2px rgba(31, 35, 40, 0.04), 0 4px 14px rgba(31, 35, 40, 0.06);
+
+  /* Z-index scale */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-overlay: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-toast: 1070;
+
+  /* Motion */
+  --duration-short: 120ms;
+  --duration-medium: 200ms;
+  --duration-long: 320ms;
+  --ease-productive: cubic-bezier(0.2, 0, 0, 1);
+  --ease-expressive: cubic-bezier(0.4, 0.14, 0.3, 1);
+
+  --btn-gradient-start: #f6f8fa;
+  --btn-gradient-end: #ebecf0;
+}
+
+.dark {
+  --background: #0d1117;
+  --foreground: #f0f6fc;
+  --card: #151b23;
+  --card-foreground: #f0f6fc;
+  --popover: #151b23;
+  --popover-foreground: #f0f6fc;
+  --primary: #4493f8;
+  --primary-foreground: #ffffff;
+  --secondary: #151b23;
+  --secondary-foreground: #f0f6fc;
+  --muted: #151b23;
+  --muted-foreground: #9198a1;
+  --accent: #212830;
+  --accent-foreground: #f0f6fc;
+  --destructive: #f85149;
+  --border: #373e47;
+  --input: #373e47;
+  --ring: #4493f8;
+  --nav: #010409;
+  --nav-foreground: #f0f6fc;
+  --chart-1: #4493f8;
+  --chart-2: #3fb950;
+  --chart-3: #d29922;
+  --chart-4: #f85149;
+  --chart-5: #ab7df8;
+  --sidebar: #0d1117;
+  --sidebar-foreground: #f0f6fc;
+  --sidebar-primary: #4493f8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #212830;
+  --sidebar-accent-foreground: #f0f6fc;
+  --sidebar-border: #373e47;
+  --sidebar-ring: #4493f8;
+
+  --success: #3fb950;
+  --success-subtle: rgba(46, 160, 67, 0.15);
+  --attention: #d29922;
+  --attention-subtle: rgba(187, 128, 9, 0.15);
+  --accent-subtle: rgba(56, 139, 253, 0.15);
+
+  --shadow-inset: inset 0 1px 0 rgba(240, 246, 252, 0.03);
+  --shadow-card: 0 1px 2px rgba(1, 4, 9, 0.5);
+  --shadow-small: 0 0 transparent;
+  --shadow-medium: 0 3px 6px rgba(1, 4, 9, 0.6);
+  --shadow-large: 0 8px 24px rgba(1, 4, 9, 0.7);
+  --shadow-xl: 0 12px 48px rgba(1, 4, 9, 0.8);
+  --shadow-hover: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.45);
+
+  --btn-gradient-start: #212830;
+  --btn-gradient-end: #151b23;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html, body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans-stack);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+  table, pre, code, [data-slot="table"] {
+    text-rendering: optimizeSpeed;
+  }
+  /* Mona Sans is reserved for the page-level display moment (h1 / .page-title
+     / .font-display). Everything else — card titles, stat values, body —
+     uses the system stack. */
+  h1, .font-display {
+    font-family: var(--font-display), var(--font-sans-stack);
+    letter-spacing: -0.015em;
+  }
+  h1 { font-weight: 600; }
+  h2, h3 { font-weight: 600; letter-spacing: -0.01em; }
+
+  /* Softer lucide strokes — 1.75 reads less "stock" than the default 2. */
+  svg.lucide {
+    stroke-width: 1.75;
+  }
+}
+
+/* Animations */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes pulse-border {
+  0%, 100% { border-color: var(--primary); }
+  50%      { border-color: color-mix(in oklab, var(--primary) 40%, transparent); }
+}
+@keyframes bubble-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes typing-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 0.8; }
+}
+
+.animate-fade-in-up { animation: fade-in-up 0.2s var(--ease-productive) both; }
+.animate-fade-in    { animation: fade-in 0.15s var(--ease-productive) both; }
+.animate-bubble-in  { animation: bubble-in 0.2s var(--ease-expressive) both; }
+
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 50ms; }
+.stagger-3 { animation-delay: 100ms; }
+.stagger-4 { animation-delay: 150ms; }
+.stagger-5 { animation-delay: 200ms; }
+.stagger-6 { animation-delay: 250ms; }
+
+/* Cards — 1px border + a whisper of shadow for subtle depth.
+   Neutralize the generated component's py-6 + gap-6 defaults so the
+   explicit padding declared on each CardHeader / CardContent wins. */
+[data-slot="card"] {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding-top: 0;
+  padding-bottom: 0;
+  gap: 0;
+  transition: border-color var(--duration-short) var(--ease-productive),
+              box-shadow var(--duration-short) var(--ease-productive);
+}
+/* When a CardHeader carries a border-b, the generated class sets pb-6.
+   Our explicit py-4 is the intended rhythm. */
+[data-slot="card-header"].border-b {
+  padding-bottom: 1rem;
+}
+
+.card-hover:hover {
+  border-color: color-mix(in oklab, var(--foreground) 18%, var(--border));
+  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.04),
+              0 4px 12px rgba(31, 35, 40, 0.04);
+}
+.dark .card-hover:hover {
+  box-shadow: var(--shadow-card), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Stat card icon chip — static, no rotation or scale on hover. */
+.stat-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius);
+  background: var(--accent-subtle);
+  color: var(--primary);
+}
+
+.dropzone-active {
+  animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+.progress-gradient [data-slot="progress-indicator"] {
+  background: var(--primary);
+}
+
+/* Table rows: subtle background shift on hover. No pseudo-element
+   accents on <tr> — they get pulled into cell flow by the browser and
+   break column alignment in fixed-layout tables. */
+.table-row-hover {
+  transition: background-color var(--duration-short) var(--ease-productive);
+}
+.table-row-hover:hover {
+  background-color: color-mix(in oklab, var(--accent-subtle) 60%, transparent);
+}
+
+/* Table cell padding: 10px vertical, 16px horizontal. */
+table[data-slot="table"] th,
+table[data-slot="table"] td {
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+table[data-slot="table"] th {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.tree-row {
+  position: relative;
+  transition: background-color var(--duration-short) var(--ease-productive);
+}
+
+/* Page title — 28px Mona Sans semibold. The sole display-font moment. */
+.page-title {
+  color: var(--foreground);
+  font-family: var(--font-display), var(--font-sans-stack);
+  font-weight: 600;
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+/* Section title — intra-page H2, fills the scale between page-title and
+   card-title. 20px system semibold. */
+.section-title {
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+/* Card title — 14px system semibold. */
+.card-title {
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+/* Stat / KPI value — big number. System semibold, tight tracking,
+   no line-height padding. Pair with a muted unit label below. */
+.stat-value {
+  font-family: var(--font-sans-stack);
+  font-weight: 600;
+  font-size: 2rem; /* 32px */
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Primary button — subtle top highlight + soft focus halo. */
+button[data-slot="button"].bg-primary {
+  background-image: linear-gradient(180deg,
+    color-mix(in oklab, var(--primary) 92%, white) 0%,
+    var(--primary) 100%);
+  box-shadow: var(--shadow-small),
+              inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition: filter var(--duration-short) var(--ease-productive),
+              transform var(--duration-short) var(--ease-productive),
+              box-shadow var(--duration-short) var(--ease-productive);
+}
+button[data-slot="button"].bg-primary:hover {
+  filter: brightness(1.04);
+  box-shadow: var(--shadow-small),
+              inset 0 1px 0 rgba(255, 255, 255, 0.22),
+              0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);
+}
+button[data-slot="button"].bg-primary:active {
+  transform: translateY(0.5px);
+  filter: brightness(0.98);
+}
+
+/* Outline button gradient */
+button[data-slot="button"].border.bg-background,
+a[data-slot="button"].border.bg-background {
+  background-image: linear-gradient(180deg, var(--btn-gradient-start), var(--btn-gradient-end));
+  box-shadow: var(--shadow-small);
+}
+button[data-slot="button"].border.bg-background:hover,
+a[data-slot="button"].border.bg-background:hover {
+  background-image: linear-gradient(180deg, var(--btn-gradient-end), var(--btn-gradient-end));
+  border-color: color-mix(in oklab, var(--foreground) 28%, var(--border));
+}
+
+[data-slot="badge"] {
+  font-weight: 500;
+  font-size: 0.75rem;
+  padding-inline: 0.5rem;
+  padding-block: 0.125rem;
+}
+
+:where(a, button, [role="button"], input, select, textarea):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.mono {
+  font-family: var(--font-mono-stack);
+  font-size: 0.8125rem;
+}
+
+/* --- AI design elements --- */
+/* Neutral primitives an implementor can reuse when building a chat UI.
+   Colored with the accent blue + neutral surfaces — no brand gradient. */
+
+.ai-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.chat-bubble {
+  max-width: 85%;
+  padding: 0.625rem 0.875rem;
+  border-radius: 14px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.chat-bubble.user {
+  align-self: flex-end;
+  background: var(--accent-subtle);
+  color: var(--foreground);
+  border: 1px solid color-mix(in oklab, var(--primary) 18%, transparent);
+  border-bottom-right-radius: 4px;
+}
+.chat-bubble.assistant {
+  align-self: flex-start;
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-typing {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.chat-typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+  opacity: 0.4;
+  animation: typing-pulse 1.2s infinite var(--ease-productive);
+}
+.chat-typing span:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing span:nth-child(3) { animation-delay: 0.3s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-typing span {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+.prompt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  transition: all var(--duration-short) var(--ease-productive);
+  cursor: pointer;
+}
+.prompt-chip:hover {
+  color: var(--foreground);
+  border-color: color-mix(in oklab, var(--primary) 50%, var(--border));
+  background: color-mix(in oklab, var(--primary) 5%, var(--card));
+}
