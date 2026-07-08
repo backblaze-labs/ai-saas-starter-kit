@@ -127,13 +127,30 @@ Open `.env` in your editor and keep it visible. Then head to the [Backblaze B2 d
 
 > Want a walkthrough? See the docs for [creating a bucket](https://www.backblaze.com/docs/cloud-storage-create-and-manage-buckets?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter) and [creating app keys](https://www.backblaze.com/docs/cloud-storage-create-and-manage-app-keys?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter).
 
-**4. Run it**
+**4. Set up Supabase (auth + database)**
+
+Authentication and the user database run on [Supabase](https://supabase.com). Use a **local** stack (default, zero cloud setup) or a **hosted** project — the app is identical either way, only the env vars differ.
+
+*Local (recommended for development)* — needs Docker (e.g. [Colima](https://github.com/abiosoft/colima) or Docker Desktop) and the Supabase CLI (`brew install supabase/tap/supabase`):
+
+```bash
+supabase start                       # boots Postgres + Auth + Studio + Mailpit
+node scripts/sync-supabase-env.mjs   # writes the local Supabase keys into .env
+```
+
+`supabase start` applies the migrations in `supabase/migrations/` (a `profiles` table, a `roles` catalog, and RLS). Confirmation and magic-link emails are caught by Mailpit at `http://127.0.0.1:54324` — nothing is sent to a real inbox locally. **The first user to sign up becomes an admin.**
+
+*Hosted (staging/production)* — create a project at [supabase.com](https://supabase.com), apply the migrations with `supabase db push`, then copy the values from **Project Settings → API** into `.env`: the project URL into `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_URL`, the anon/publishable key into `NEXT_PUBLIC_SUPABASE_ANON_KEY` + `SUPABASE_ANON_KEY`, and the service-role key into `SUPABASE_SERVICE_ROLE_KEY` (**server-only — never expose it to the browser**). Swapping local ↔ hosted is config-only.
+
+> ⚠️ **Hosted admin:** the first user to sign up is auto-promoted to admin (handy locally). On a public hosted deploy, sign up yourself first, or remove the auto-promote branch in the migration and grant admin manually. See [docs/SECURITY.md](docs/SECURITY.md).
+
+**5. Run it**
 
 ```bash
 pnpm dev
 ```
 
-That's it. Frontend at `localhost:3000`, API at `localhost:8000`. Upload a file and see it working.
+That's it. Frontend at `localhost:3000`, API at `localhost:8000`. Sign up to create your account (the first user is an admin), then upload a file and see it working.
 
 `pnpm dev` runs `pnpm doctor` first — a preflight check that catches the common setup gotchas (wrong Node/Python version, missing venv, missing or placeholder `.env`, ports already taken) and tells you exactly how to fix each one. Run it standalone any time with `pnpm doctor`.
 
@@ -142,6 +159,7 @@ That's it. Frontend at `localhost:3000`, API at `localhost:8000`. Upload a file 
 When you adapt this kit for a new app, keep the shared scaffolding and only swap out what's app-specific:
 
 - **Keep** the UI kit (`apps/web/src/components/ui/` + design tokens in `globals.css` + `/design`).
+- **Keep** the auth layer (Supabase sign in/up, protected routes, `/account`, roles/admin) — it's the reusable SaaS foundation.
 - **Keep** the File Explorer (`/files`) and Upload (`/upload`) pages and their sidebar nav entries — they're the reusable B2-backed surface.
 - **Adapt** the Dashboard (`/`) to your use case — replace the default stats, chart, and recent uploads with metrics that reflect what your app actually does.
 - **Rebrand** by editing a single file: `apps/web/src/lib/app-config.ts` holds the app name and description (`APP_NAME`, `APP_DESCRIPTION`). Changing them there updates the page title, sidebar, and breadcrumb everywhere — no other files to touch.
@@ -150,6 +168,7 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 
 ## Core Features
 
+- [Authentication](docs/features/authentication.md) — Supabase email/password + email-code (OTP) sign-in, protected routes, profiles, and an admin role
 - [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress
 - [File Browser](docs/features/file-browser.md) — list, preview, download, delete files
 - [Dashboard](docs/features/dashboard.md) — stats cards, upload chart, recent uploads
@@ -167,7 +186,8 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 
 - TypeScript, Next.js 16, React 19, Tailwind v4, shadcn/ui, Recharts
 - TanStack Query — caching, dedup, retry, stale-while-revalidate for every fetch
-- Python 3.11+, FastAPI, boto3, Pydantic v2, Pillow, PyPDF2
+- Python 3.11+, FastAPI, boto3, Pydantic v2, Pillow, PyPDF2, httpx
+- Supabase (auth + Postgres; `@supabase/ssr` for cookie-based sessions)
 - Backblaze B2 (S3-compatible object storage)
 - pnpm workspaces (monorepo)
 
@@ -191,7 +211,7 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 |-----|---------|
 | [AGENTS.md](AGENTS.md) | Agent table of contents — start here |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System layout, layering, data flows |
-| [docs/features/](docs/features/) | Feature docs (upload, browser, dashboard, metadata) |
+| [docs/features/](docs/features/) | Feature docs (auth, upload, browser, dashboard, metadata) |
 | [docs/design-system.md](docs/design-system.md) | Design tokens, primitives, AI elements, loader, error/empty states |
 | [docs/app-workflows.md](docs/app-workflows.md) | User journeys |
 | [docs/dev-workflows.md](docs/dev-workflows.md) | Engineering workflows and testing |

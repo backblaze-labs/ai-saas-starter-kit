@@ -1,0 +1,67 @@
+<!-- last_verified: 2026-07-08 -->
+# Feature: Authentication
+
+## Purpose
+Gate the app behind Supabase auth so every screen and B2 operation belongs to a
+signed-in user, and introduce the first real database (profiles + roles).
+
+## Used By
+- UI: `/signin`, `/signup`, `/account`; the whole `(app)` route group is protected.
+- API: `GET /me` (returns the authenticated identity); `get_current_user` /
+  `require_admin` dependencies for future protected/admin endpoints.
+- Middleware: `apps/web/src/proxy.ts` (Next 16 proxy convention) refreshes the
+  session and redirects unauthenticated requests to `/signin`.
+
+## Core Functions
+- `apps/web/src/lib/supabase/{client,server,middleware}.ts` — SSR-safe Supabase clients.
+- `apps/web/src/components/auth/auth-provider.tsx` — `useAuth()` (user, profile, isAdmin, signOut).
+- `services/api/app/repo/supabase_auth.py` — validates a token via Supabase `/auth/v1/user`.
+- `public.handle_new_user()` / `public.is_admin()` / `public.prevent_role_escalation()` (migration).
+
+## Canonical Files
+- Route protection: `apps/web/src/proxy.ts` + `apps/web/src/lib/supabase/middleware.ts`
+- DB + RLS: `supabase/migrations/20260708170211_auth_profiles_roles.sql`
+- API auth: `services/api/app/runtime/auth.py` (thin) → `service/auth.py` → `repo/supabase_auth.py`
+
+## Inputs
+- email + password, or email + 6-digit OTP code (sign-in UI)
+- `Authorization: Bearer <supabase access token>` (API requests)
+
+## Outputs
+- A cookie-based Supabase session (managed by `@supabase/ssr`)
+- A `public.profiles` row per user (created by the `on_auth_user_created` trigger)
+- Side effects: first-ever user is promoted to `admin`; `GET /me` returns `{id, email, role}`
+
+## Flow
+- Sign up → Supabase sends a confirmation email → user clicks the link → `/auth/confirm`
+  verifies the token (`verifyOtp`) and sets the session → redirect into the app.
+- Sign in (password or email OTP) → session cookies set → redirect to `next` (default `/`).
+- Every request passes through `proxy.ts`: no session on a protected route → `/signin?next=…`.
+- Client API calls attach the access token (`lib/api-client.ts`); the API validates it
+  against Supabase and reads the caller's role from `profiles` (RLS-scoped).
+
+## Edge Cases
+- Invalid/expired confirmation link → redirect to `/signin?error=confirmation-failed`.
+- Signed-in user visiting `/signin` or `/signup` → redirected into the app.
+- `next` param that isn't a same-site relative path → ignored (no open redirect).
+- Non-admin editing their own `role` → blocked by `prevent_role_escalation` trigger.
+- Missing/!bearer Authorization on the API → 401; valid token but non-admin on an admin route → 403.
+
+## UX States
+- Empty: sign-in / sign-up forms.
+- Loading: "Signing in…", "Creating account…", "Checking…" (API session card).
+- Error: inline `role="alert"` messages from Supabase; account API card degrades gracefully.
+
+## Verification
+- Test files: `apps/web/e2e/auth.spec.ts`, `apps/web/e2e/auth.setup.ts`, `services/api/tests/test_auth.py`
+- Required cases: unauthenticated redirect (+`next`), signup→email-confirm→session,
+  protected dashboard reached, `/me` validates the session, sign-out.
+- Quick verify command: `pnpm test:api` (API auth unit tests)
+- Full verify command: `supabase start` + `pnpm dev`, then `pnpm test:e2e`
+- Pass criteria: API auth tests green; e2e auth + upload specs green against a running stack.
+
+## Related Docs
+- [README.md](../../README.md)
+- [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- [docs/SECURITY.md](../SECURITY.md)
+- [docs/app-workflows.md](../app-workflows.md)

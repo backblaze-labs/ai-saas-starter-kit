@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+  <body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #111;">
+    <h2>Confirm your email</h2>
+    <p>Welcome to AI Media SaaS Starter. Confirm your email to activate your account:</p>
+    <p>
+      <a
+        href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email"
+        style="display: inline-block; padding: 10px 16px; background: #111; color: #fff; text-decoration: none; border-radius: 8px;"
+        >Confirm your email</a
+      >
+    </p>
+    <p style="color: #666; font-size: 13px;">
+      If the button doesn't work, copy this link into your browser:<br />
+      {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email
+    </p>
+  </body>
+</html>

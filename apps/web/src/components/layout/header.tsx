@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Moon, Sun, Search } from "lucide-react";
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/tooltip";
 import { CommandPalette } from "./command-palette";
 import { APP_NAME } from "@/lib/app-config";
+import { useAuth } from "@/components/auth/auth-provider";
 
 // Overrides for routes whose label differs from the derived segment
 // (e.g. "/" -> "Dashboard", "/design" -> "Design System").
@@ -30,6 +32,7 @@ const pageTitles: Record<string, string> = {
   "/files": "Files",
   "/settings": "Settings",
   "/design": "Design System",
+  "/account": "Account",
 };
 
 // Fallback page label for routes not in the override map: title-case the last
@@ -45,7 +48,9 @@ function deriveTitleFromPath(pathname: string): string {
 
 export function Header() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
+  const initial = user?.email?.[0]?.toUpperCase() ?? "?";
   const pageTitle = pageTitles[pathname] ?? deriveTitleFromPath(pathname);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const nextTheme = resolvedTheme === "dark" ? "light" : "dark";
@@ -131,13 +136,14 @@ export function Header() {
           </TooltipTrigger>
           <TooltipContent side="bottom">Toggle color theme</TooltipContent>
         </Tooltip>
-        {/* Placeholder avatar — swap for a real user chip when auth lands. */}
-        <div
-          aria-hidden
-          className="ml-1 h-7 w-7 rounded-full bg-[var(--primary)] ring-1 ring-white/20 relative overflow-hidden"
+        <Link
+          href="/account"
+          aria-label="Account"
+          title={user?.email ?? "Account"}
+          className="ml-1 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--primary)] text-[11px] font-semibold text-white ring-1 ring-white/20 transition-transform hover:scale-105"
         >
-          <span className="absolute inset-x-0 top-0 h-1/2 bg-white/15" />
-        </div>
+          {initial}
+        </Link>
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />

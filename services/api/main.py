@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
 from app.config import settings  # noqa: E402
-from app.runtime import files, health, metrics, upload  # noqa: E402
+from app.runtime import auth, files, health, metrics, upload  # noqa: E402
 
 # --- Startup validation ---
 # Required B2 settings are declared with empty-string defaults so that
@@ -48,6 +48,13 @@ PLACEHOLDER_VALUES = frozenset({
     "your_region",
 })
 
+# Supabase powers auth; the URL + anon key are the minimum to validate sessions.
+# The service-role key is only needed by the admin slice, so it is not gated here.
+REQUIRED_SUPABASE_SETTINGS = (
+    ("supabase_url", "SUPABASE_URL"),
+    ("supabase_anon_key", "SUPABASE_ANON_KEY"),
+)
+
 
 @asynccontextmanager
 async def lifespan(_app: "FastAPI"):
@@ -73,6 +80,18 @@ async def lifespan(_app: "FastAPI"):
             "B2 configuration still has placeholder values: "
             + ", ".join(placeholders)
             + f". Edit {REPO_ROOT_ENV} with your real B2 credentials and restart."
+        )
+
+    missing_supabase = [
+        env_name
+        for attr, env_name in REQUIRED_SUPABASE_SETTINGS
+        if not getattr(settings, attr)
+    ]
+    if missing_supabase:
+        raise RuntimeError(
+            "Missing required Supabase configuration: "
+            + ", ".join(missing_supabase)
+            + f". Add them to {REPO_ROOT_ENV} (see .env.example) and restart."
         )
     yield
 
@@ -144,6 +163,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router, tags=["health"])
+app.include_router(auth.router, tags=["auth"])
 app.include_router(upload.router, tags=["upload"])
 app.include_router(files.router, tags=["files"])
 app.include_router(metrics.router, tags=["metrics"])

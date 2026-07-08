@@ -1,4 +1,12 @@
+import { join } from "node:path";
+import { loadEnvConfig } from "@next/env";
 import type { NextConfig } from "next";
+
+// This is a monorepo: env lives in the repo-root .env (shared with the FastAPI
+// backend), not in apps/web. Load it here so NEXT_PUBLIC_* vars (Supabase URL +
+// anon key, API URL) are inlined at build time and available at runtime. Does
+// not override anything already set in the environment (e.g. dev.sh exports).
+loadEnvConfig(join(process.cwd(), "..", ".."), process.env.NODE_ENV !== "production");
 
 // Allow `next/image` to optimize remote previews coming from Backblaze B2.
 // Presigned download URLs use the bucket-specific S3 hostname pattern:

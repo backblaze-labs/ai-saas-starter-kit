@@ -3,6 +3,17 @@
 
 User journeys inside the application.
 
+## Sign Up & Sign In
+
+- New user navigates to `/signup`, enters name/email/password
+- Supabase sends a confirmation email (locally, caught by Mailpit at `:54324`)
+- User clicks the link → `/auth/confirm` verifies it and establishes the session → lands in the app
+- Returning user signs in at `/signin` with password **or** an emailed 6-digit code
+- Unauthenticated visits to any protected route redirect to `/signin?next=<path>`
+- `/account` shows the profile (editable name), role badge, an "API session" check, and Sign out
+- The first user to sign up is an admin
+- See: [Authentication](features/authentication.md)
+
 ## Upload Files
 
 - User navigates to `/upload`

@@ -4,6 +4,8 @@
 ## Components
 
 - **apps/web/** — Next.js 16 frontend (App Router, Tailwind v4, shadcn/ui)
+  - Supabase auth: sign in/up, `/account`, session refresh + route protection via `proxy.ts`
+  - Route groups: `(app)` (authenticated shell) and `(auth)` (chrome-free sign-in/up)
   - Dashboard with stats, upload chart, recent uploads
   - File upload with drag-and-drop, progress tracking
   - File browser with preview, download, delete
@@ -77,11 +79,15 @@ services/api/
 - **Backblaze B2** — object storage (S3-compatible API)
   - All uploaded files stored in a single bucket
   - File listing and metadata via S3 `list_objects_v2` / `head_object`
-  - No application database — B2 is the sole data store
+- **Supabase Postgres** — auth + application database
+  - `auth.users` (managed by Supabase) plus `public.profiles` (1:1) and `public.roles`
+  - Row Level Security scopes reads/writes to the owning user (admins see all)
+  - Schema lives in `supabase/migrations/`; local dev runs the full stack via `supabase start`
 
 ## External Services
 
 - **Backblaze B2 S3 API** — file storage, retrieval, deletion, presigned URLs
+- **Supabase** — authentication (GoTrue) + Postgres/PostgREST; local or hosted, config-only swap
 
 ## Trust Boundaries
 
@@ -93,6 +99,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 
 ## Data Flows
 
+- **Auth**: Browser -> Supabase (sign up/in) -> confirm via `/auth/confirm` -> cookie session; `proxy.ts` refreshes it per request and redirects unauthenticated users to `/signin`. API calls carry the token; the API validates it against Supabase (`repo/supabase_auth.py`).
 - **Upload**: Browser -> `POST /upload` (multipart) -> API validates -> service orchestrates -> repo writes to B2 -> metadata extracted -> response
 - **List**: Browser -> `GET /files` -> service calls repo -> returns file list
 - **Download**: Browser -> `GET /files/{key}/download` -> service validates key -> repo generates presigned URL -> browser downloads
@@ -118,6 +125,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 
 ## Core Features
 
+- [Authentication](docs/features/authentication.md)
 - [File Upload](docs/features/file-upload.md)
 - [File Browser](docs/features/file-browser.md)
 - [Dashboard](docs/features/dashboard.md)

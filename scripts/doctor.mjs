@@ -42,6 +42,20 @@ const PLACEHOLDERS = new Set([
   "your_region",
 ]);
 
+// Required Supabase vars. The frontend needs the NEXT_PUBLIC_* pair; the backend
+// needs the SUPABASE_* pair (mirrors services/api/main.py REQUIRED_SUPABASE_SETTINGS).
+// SUPABASE_SERVICE_ROLE_KEY is optional until the admin slice, so it is not required.
+const REQUIRED_SUPABASE_VARS = [
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "SUPABASE_URL",
+  "SUPABASE_ANON_KEY",
+];
+const SUPABASE_PLACEHOLDERS = new Set([
+  "your_supabase_anon_key",
+  "your_supabase_service_role_key",
+]);
+
 // Only Next.js: `pnpm dev` self-heals the API side via scripts/pick-port.mjs,
 // so warning about 8000 here would just duplicate dev.sh's own banner.
 const PORTS_TO_CHECK = [{ port: 3000, name: "Next.js dev server" }];
@@ -187,6 +201,23 @@ function checkEnv() {
     fail(
       `.env still has placeholder values: ${placeholders.join(", ")}`,
       "Edit .env and replace placeholders with your real B2 credentials (https://secure.backblaze.com/app_keys.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter)",
+    );
+  }
+
+  const missingSupabase = REQUIRED_SUPABASE_VARS.filter((k) => !env[k]);
+  if (missingSupabase.length > 0) {
+    fail(
+      `.env is missing required Supabase variables: ${missingSupabase.join(", ")}`,
+      "Local: run `supabase start` then `node scripts/sync-supabase-env.mjs`. Hosted: copy values from your project's Settings -> API",
+    );
+  }
+  const supabasePlaceholders = REQUIRED_SUPABASE_VARS.filter(
+    (k) => env[k] && SUPABASE_PLACEHOLDERS.has(env[k]),
+  );
+  if (supabasePlaceholders.length > 0) {
+    fail(
+      `.env still has placeholder Supabase values: ${supabasePlaceholders.join(", ")}`,
+      "Fill them via `node scripts/sync-supabase-env.mjs` (local) or your hosted project's API settings",
     );
   }
 }

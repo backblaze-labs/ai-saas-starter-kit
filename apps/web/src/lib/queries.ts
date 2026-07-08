@@ -6,8 +6,10 @@ import {
   deleteFile,
   getFiles,
   getFileStats,
+  getMe,
   getPreviewUrl,
   getUploadActivity,
+  type Me,
 } from "@/lib/api-client";
 import type { FileMetadata } from "@ai-media-saas-starter/shared";
 
@@ -22,6 +24,7 @@ export const qk = {
   uploadActivity: (days: number) =>
     [...qk.all, "stats", "activity", days] as const,
   preview: (key: string) => [...qk.all, "preview", key] as const,
+  me: () => [...qk.all, "me"] as const,
 };
 
 export function useFiles(prefix = "", limit = 100) {
@@ -54,6 +57,18 @@ export function usePreviewUrl(key: string | undefined, enabled: boolean) {
     queryFn: () => getPreviewUrl(key as string),
     enabled: enabled && !!key,
     staleTime: 60_000,
+  });
+}
+
+// The authenticated identity as seen by the backend. Not retried on auth
+// failure (the query client already skips retries on 4xx), so a signed-out or
+// unreachable API surfaces as isError rather than spinning.
+export function useMe(enabled = true) {
+  return useQuery<Me, ApiError>({
+    queryKey: qk.me(),
+    queryFn: getMe,
+    staleTime: 60_000,
+    enabled,
   });
 }
 

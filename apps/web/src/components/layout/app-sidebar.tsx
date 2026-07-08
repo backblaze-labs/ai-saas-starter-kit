@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Upload, FolderOpen, Settings, Sparkles } from "lucide-react";
+import {
+  LayoutDashboard,
+  Upload,
+  FolderOpen,
+  Settings,
+  Sparkles,
+  UserRound,
+  LogOut,
+} from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -16,11 +24,13 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { APP_NAME } from "@/lib/app-config";
+import { useAuth } from "@/components/auth/auth-provider";
 
 const navItems = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Upload", href: "/upload", icon: Upload },
   { title: "Files", href: "/files", icon: FolderOpen },
+  { title: "Account", href: "/account", icon: UserRound },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -28,6 +38,7 @@ const utilItems = [{ title: "Design System", href: "/design", icon: Sparkles }];
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { user, profile, signOut } = useAuth();
 
   return (
     <Sidebar>
@@ -106,7 +117,27 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border px-4 py-3">
+      <SidebarFooter className="gap-2 border-t border-sidebar-border px-4 py-3">
+        {user && (
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium">{user.email}</p>
+              {profile?.role && (
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {profile.role}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              aria-label="Sign out"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <a
           href="https://www.backblaze.com/cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter"
           target="_blank"

@@ -3,14 +3,8 @@ import { Mona_Sans } from "next/font/google";
 import "./globals.css";
 
 import { ThemeProvider } from "@/components/layout/theme-provider";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { AppSidebar } from "@/components/layout/app-sidebar";
-import { Header } from "@/components/layout/header";
-import { HealthBanner } from "@/components/layout/health-banner";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryClientProvider } from "@/lib/query-client";
-import { RefreshProvider } from "@/lib/refresh-context";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/app-config";
 
 // Display face — used for page titles. Body copy uses the system stack
@@ -27,6 +21,9 @@ export const metadata: Metadata = {
   description: APP_DESCRIPTION,
 };
 
+// Root layout holds only global providers. The authenticated app shell (sidebar,
+// header) lives in app/(app)/layout.tsx; the public auth screens use
+// app/(auth)/layout.tsx. This split lets sign-in/sign-up render chrome-free.
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -37,21 +34,8 @@ export default function RootLayout({
       <body className={`${monaSans.variable} antialiased`}>
         <ThemeProvider>
           <QueryClientProvider>
-            <RefreshProvider>
-              <SidebarProvider>
-                <TooltipProvider>
-                  <AppSidebar />
-                  <div className="flex flex-1 flex-col">
-                    <Header />
-                    <HealthBanner />
-                    <main className="flex-1 overflow-auto p-6 lg:p-8">
-                      {children}
-                    </main>
-                  </div>
-                  <Toaster />
-                </TooltipProvider>
-              </SidebarProvider>
-            </RefreshProvider>
+            {children}
+            <Toaster />
           </QueryClientProvider>
         </ThemeProvider>
       </body>

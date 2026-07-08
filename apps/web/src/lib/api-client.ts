@@ -4,8 +4,26 @@ import type {
   FileUploadResponse,
   UploadStats,
 } from "@ai-media-saas-starter/shared";
+import { createClient } from "./supabase/client";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/**
+ * Attach the current Supabase access token as a bearer header when a session
+ * exists. Returns an empty object on the server or when signed out, so
+ * unauthenticated/public endpoints keep working unchanged.
+ */
+async function authHeaders(): Promise<Record<string, string>> {
+  if (typeof window === "undefined") return {};
+  try {
+    const {
+      data: { session },
+    } = await createClient().auth.getSession();
+    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+  } catch {
+    return {};
+  }
+}
 
 /** Typed API error with HTTP status code for caller-side branching. */
 export class ApiError extends Error {
@@ -53,9 +71,13 @@ function networkError(): ApiError {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = {
+    ...(init?.headers as Record<string, string> | undefined),
+    ...(await authHeaders()),
+  };
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, init);
+    res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   } catch {
     throw networkError();
   }
@@ -172,10 +194,11 @@ export async function deleteFile(key: string) {
   );
 }
 
-export function uploadFile(
+export async function uploadFile(
   file: File,
   onProgress?: (percent: number) => void
 ): Promise<FileUploadResponse> {
+  const headers = await authHeaders();
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
@@ -206,6 +229,16 @@ export function uploadFile(
     );
 
     xhr.open("POST", `${API_BASE}/upload`);
+    for (const [name, value] of Object.entries(headers)) {
+      xhr.setRequestHeader(name, value);
+    }
     xhr.send(formData);
   });
+}
+
+export type Me = { id: string; email: string | null; role: string };
+
+/** The authenticated identity as validated by the FastAPI backend (GET /me). */
+export async function getMe() {
+  return apiFetch<Me>("/me");
 }

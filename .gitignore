@@ -43,6 +43,7 @@ coverage/
 .pytest_cache/
 playwright-report/
 test-results/
+.auth/
 
 # B2 / AWS
 .aws/

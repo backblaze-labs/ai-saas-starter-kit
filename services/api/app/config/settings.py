@@ -9,6 +9,14 @@ class Settings(BaseSettings):
     b2_region: str = ""
     b2_public_url_base: str = ""
 
+    # Supabase (auth + Postgres). Identical shape for local (`supabase start`)
+    # and hosted projects — only the URL/keys differ, so swapping environments is
+    # config-only. The service-role key is server-only and must never reach the
+    # browser; it is unused until the admin slice, hence not required to boot.
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_service_role_key: str = ""
+
     api_port: int = 8000
     # Explicit allowlist by default — covers Next on :3000 and the
     # fallback :3001 it picks if 3000 is busy. Production deploys should
