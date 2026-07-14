@@ -44,7 +44,15 @@ class Settings(BaseSettings):
     generation_width: int = 1024
     generation_height: int = 1024
     generation_steps: int = 4
-    generation_run_timeout: int = 120
+    # Provider budget: passed to the Genblaze run AND the NVIDIA client's
+    # http/nvcf timeouts, so the SDK gives up on a slow provider.
+    generation_run_timeout: int = 90
+    # Hard request backstop: the service aborts the (blocking) generation after
+    # this many seconds even if the provider ignores its own timeout — some NIM
+    # endpoints hold/trickle a slow request in a way that defeats a read timeout,
+    # so without this the request (and the worker) would hang indefinitely. Keep
+    # it a bit above generation_run_timeout so the SDK's cleaner error wins first.
+    generation_deadline: int = 120
     # B2 key prefix for generated assets: generated/{user_id}/{date}/{run_id}/...
     generation_prefix: str = "generated"
 

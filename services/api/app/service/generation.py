@@ -6,6 +6,7 @@ it runs in a threadpool to keep the event loop free. Genblaze types never cross
 this boundary — the repo returns plain dicts.
 """
 
+import asyncio
 import logging
 from functools import partial
 
@@ -43,9 +44,22 @@ async def generate(*, user_id: str, prompt: str, seed: int | None = None) -> Gen
     job_id = job["id"]
 
     try:
-        result = await run_in_threadpool(
-            partial(generation_pipeline.generate_image, user_id=user_id, prompt=prompt, seed=seed)
+        # Hard request backstop: some NIM endpoints hold/trickle a slow request
+        # so the SDK's own read timeout never fires. wait_for guarantees the
+        # request (and this coroutine) returns even then — the abandoned worker
+        # thread is left to unwind on its own. The job is marked failed so it
+        # never lingers as "running".
+        result = await asyncio.wait_for(
+            run_in_threadpool(
+                partial(generation_pipeline.generate_image, user_id=user_id, prompt=prompt, seed=seed)
+            ),
+            timeout=settings.generation_deadline,
         )
+    except TimeoutError:
+        msg = f"Generation timed out after {settings.generation_deadline}s"
+        await supabase_generation.complete_job(job_id, status="failed", error=msg)
+        logger.warning("generation timed out for job=%s", job_id)
+        raise GenerationError(msg) from None
     except Exception as exc:  # provider/preflight/network failure
         await supabase_generation.complete_job(job_id, status="failed", error=str(exc))
         logger.exception("generation pipeline raised for job=%s", job_id)

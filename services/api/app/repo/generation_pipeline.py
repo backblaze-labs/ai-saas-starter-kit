@@ -116,7 +116,14 @@ def generate_image(*, user_id: str, prompt: str, seed: int | None = None) -> dic
     # keeps concurrent runs isolated and is cleaned up on exit.
     with tempfile.TemporaryDirectory(prefix="genblaze-nvidia-") as tmp:
         pipe = Pipeline(PIPELINE_NAME, project_id=user_id).step(
-            NvidiaImageProvider(api_key=settings.nvidia_api_key, output_dir=tmp),
+            NvidiaImageProvider(
+                api_key=settings.nvidia_api_key,
+                output_dir=tmp,
+                # Bound the SDK's own HTTP + async-poll waits so a slow NVIDIA
+                # endpoint surfaces as a failed step, not an unbounded hang.
+                http_timeout=float(settings.generation_run_timeout),
+                nvcf_timeout=float(settings.generation_run_timeout),
+            ),
             model=settings.nvidia_image_model,
             modality=Modality.IMAGE,
             prompt=prompt,

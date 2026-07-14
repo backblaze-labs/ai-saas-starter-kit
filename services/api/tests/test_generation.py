@@ -188,6 +188,30 @@ async def test_generate_marks_failed_and_502_when_no_asset(client, monkeypatch, 
 
 
 @pytest.mark.asyncio
+async def test_generate_times_out_cleanly_instead_of_hanging(client, monkeypatch, fake_store):
+    """A provider that hangs must yield a bounded 502 + a failed job, never a hang."""
+    import time
+
+    from app.config import settings as app_settings
+
+    _auth_as(monkeypatch, tier="pro")
+    monkeypatch.setattr(generation_pipeline, "is_configured", lambda: True)
+    monkeypatch.setattr(app_settings, "generation_deadline", 0.3)
+    monkeypatch.setattr(generation_pipeline, "generate_image", lambda **kw: time.sleep(5))
+
+    start = time.monotonic()
+    resp = await client.post(
+        "/generation/generate",
+        headers={"Authorization": "Bearer x"},
+        json={"prompt": "hangs"},
+    )
+    elapsed = time.monotonic() - start
+    assert resp.status_code == 502
+    assert elapsed < 3, f"request should abort near the 0.3s deadline, took {elapsed:.1f}s"
+    assert fake_store.jobs["job-1"]["status"] == "failed"
+
+
+@pytest.mark.asyncio
 async def test_generate_502_when_pipeline_raises(client, monkeypatch, fake_store):
     _auth_as(monkeypatch, tier="pro")
     monkeypatch.setattr(generation_pipeline, "is_configured", lambda: True)
