@@ -1,57 +1,67 @@
-<!-- last_verified: 2026-06-25 -->
+<!-- last_verified: 2026-07-14 -->
 # Feature: Dashboard
 
 ## Purpose
-Provide an at-a-glance overview of file storage usage and recent upload activity.
+Give a signed-in user an at-a-glance view of their SaaS state: current plan +
+status, storage used, AI generations produced, failed jobs, and recent activity.
 
 ## Used By
 - UI: `/` page (dashboard home)
-- API: `GET /files/stats`, `GET /files`, `GET /files/stats/activity`
+- API: `GET /billing/subscription`, `GET /files/stats`,
+  `GET /files/stats/activity`, `GET /generation/jobs`
 
 ## Core Functions
-- `apps/web/src/components/dashboard/stats-cards.tsx` — 4 stat cards
-- `apps/web/src/components/dashboard/recent-uploads-table.tsx` — last 10 uploads
-- `apps/web/src/components/dashboard/upload-chart.tsx` — bar chart of uploads per day
-- `apps/web/src/lib/api-client.ts` — `getFileStats()`, `getFiles()`, `getUploadActivity()`
-- `services/api/app/runtime/files.py` — `GET /files/stats` handler
-- `services/api/app/service/files.py` — `get_stats()` business logic
-- `services/api/app/repo/b2_client.py` — `get_upload_stats()` data access
+- `apps/web/src/components/dashboard/saas-stats-cards.tsx` — 4 KPI cards (plan,
+  storage, generations, failed jobs), composed from existing query hooks
+- `apps/web/src/components/dashboard/recent-generations-table.tsx` — last ~6 jobs
+- `apps/web/src/components/dashboard/upload-chart.tsx` — storage activity chart
+- `apps/web/src/components/status-badge.tsx` — shared status pill (job/sub/run)
+- `apps/web/src/lib/queries.ts` — `useSubscription`, `useFileStats`,
+  `useUploadActivity`, `useGenerationJobs`
 
 ## Canonical Files
-- Dashboard page layout: `apps/web/src/components/dashboard/stats-cards.tsx`
-- Stats service logic: `services/api/app/service/files.py`
+- Dashboard KPI pattern: `apps/web/src/components/dashboard/saas-stats-cards.tsx`
+- Recent-activity table pattern: `apps/web/src/components/dashboard/recent-generations-table.tsx`
 
 ## Inputs
-- None (dashboard loads data automatically)
+- None (dashboard loads data automatically for the signed-in user)
 
 ## Outputs
-- `GET /files/stats` → `UploadStats` (total_files, total_size_bytes, total_size_human, uploads_today, total_downloads)
-- `GET /files` (limit 10) → `FileMetadata[]` for recent uploads table (sorted newest-first)
-- `GET /files/stats/activity?days=7` → `DailyUploadCount[]` for chart (server-side aggregation)
+- `GET /billing/subscription` → `Subscription` (plan_id + status card)
+- `GET /files/stats` → `UploadStats` (storage-used card)
+- `GET /generation/jobs` → `GenerationJob[]` (generations count, failed count,
+  recent-generations table — no dashboard-specific endpoint needed)
+- `GET /files/stats/activity?days=7` → `DailyUploadCount[]` (activity chart)
 
 ## Flow
-- Page loads → three parallel API calls (stats, recent files, upload activity)
-- Stats cards display total files, storage used, uploads today, total downloads
-- Upload chart displays server-aggregated daily counts for last 7 days as bar chart after activity data is known
-- Recent uploads table shows last 10 files with filename, size, type, date, status badge
+- Page loads → parallel query hooks (subscription, file stats, generation jobs,
+  upload activity).
+- KPI cards render plan + status badge, storage used, count of succeeded jobs,
+  count of failed jobs.
+- Recent-generations table shows the newest ~6 jobs with prompt, status badge,
+  and created date; links to `/generate`.
+- Storage activity chart renders server-aggregated daily counts.
 
 ## Edge Cases
-- API unavailable → error states with retry where supported; activity chart does not show a false zero state while loading
-- No files uploaded → empty chart message, empty table message
-- Large file count → stats endpoint paginates through all objects using `ContinuationToken`
+- API unavailable → error/loading states; the activity chart does not show a
+  false zero while loading.
+- No subscription row → treated as the Free tier (status inactive).
+- No generations yet → empty state in the recent table; counts show 0.
 
 ## UX States
-- Loading: skeleton placeholders for cards, table, and upload activity chart
-- Empty: "No files uploaded yet" / "No upload data available yet"
+- Loading: skeleton placeholders for cards, table, and chart
+- Empty: "No generations yet" in the recent table
 - Loaded: populated cards, chart, table
 
 ## Verification
-- Test files: `services/api/tests/test_upload_activity.py`, `services/api/tests/test_recent_files.py`
-- Required cases: stats with files, stats with empty bucket, API error fallback
+- Test files: `services/api/tests/test_generation.py` (jobs feed the cards/table),
+  `services/api/tests/test_billing.py`, `services/api/tests/test_upload_activity.py`
+- Required cases: subscription present/absent, jobs with mixed statuses, empty
 - Quick verify command: `pnpm test:api`
-- Full verify command: `pnpm lint && pnpm lint:api && pnpm test:api && pnpm check:structure`
-- Pass criteria: all pytest tests green, no ruff violations
+- Full verify command: `pnpm lint && pnpm lint:api && pnpm test:api && pnpm check:structure && pnpm build`
+- Pass criteria: all pytest green, ruff/eslint clean, `next build` succeeds
 
 ## Related Docs
 - [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- [Admin](admin.md)
 - [App Workflows](../app-workflows.md)

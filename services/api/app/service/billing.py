@@ -58,12 +58,17 @@ async def list_plans() -> list[Plan]:
     return [Plan(**row) for row in await supabase_billing.list_plans()]
 
 
+def subscription_from_row(row: dict) -> Subscription:
+    """Map a subscriptions PostgREST row to the API model (keeps only modelled
+    fields). Shared by the per-user read here and the admin all-subs list."""
+    return Subscription(**{k: row.get(k) for k in Subscription.model_fields})
+
+
 async def get_subscription(user_id: str) -> Subscription:
     row = await supabase_billing.get_subscription(user_id)
     if not row:
         return Subscription(user_id=user_id, plan_id="free", status="inactive")
-    fields = Subscription.model_fields
-    return Subscription(**{k: row.get(k) for k in fields})
+    return subscription_from_row(row)
 
 
 async def get_entitlements(user_id: str) -> Entitlements:

@@ -1,10 +1,16 @@
 import type {
+  AdminAuditEvent,
+  AdminFile,
+  AdminOverview,
+  AdminProviderRun,
+  AdminUser,
   DailyUploadCount,
   Entitlements,
   FileMetadata,
   FileUploadResponse,
   GenerationJob,
   Plan,
+  Role,
   Subscription,
   UploadStats,
 } from "@ai-media-saas-starter/shared";
@@ -304,4 +310,46 @@ export async function generateImage(prompt: string, seed?: number | null) {
 /** The caller's generation jobs (newest first), each with its generated assets. */
 export async function getGenerationJobs() {
   return apiFetch<GenerationJob[]>("/generation/jobs");
+}
+
+// --- Admin -----------------------------------------------------------------
+// Every /admin endpoint is admin-gated server-side (401 signed-out, 403
+// non-admin), so these throw an ApiError with that status for a non-admin.
+
+/** Aggregate counts + storage across all users (admin console cards). */
+export async function getAdminOverview() {
+  return apiFetch<AdminOverview>("/admin/overview");
+}
+
+export async function getAdminUsers() {
+  return apiFetch<AdminUser[]>("/admin/users");
+}
+
+export async function getAdminSubscriptions() {
+  return apiFetch<Subscription[]>("/admin/subscriptions");
+}
+
+export async function getAdminJobs() {
+  return apiFetch<GenerationJob[]>("/admin/jobs");
+}
+
+export async function getAdminFiles() {
+  return apiFetch<AdminFile[]>("/admin/files");
+}
+
+export async function getAdminProviderRuns() {
+  return apiFetch<AdminProviderRun[]>("/admin/provider-runs");
+}
+
+export async function getAdminAudit() {
+  return apiFetch<AdminAuditEvent[]>("/admin/audit");
+}
+
+/** Change a user's role. Audited server-side; runs with the admin's own token. */
+export async function setUserRole(userId: string, role: Role) {
+  return apiFetch<AdminUser>(`/admin/users/${userId}/role`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
 }

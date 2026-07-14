@@ -125,3 +125,61 @@ export interface GenerationJob {
   assets: GeneratedAsset[];
   created_at: string | null;
 }
+
+// --- Admin -----------------------------------------------------------------
+
+export type Role = "user" | "admin";
+
+export interface AdminOverview {
+  users: number;
+  admins: number;
+  active_subscriptions: number;
+  generation_jobs: number;
+  failed_jobs: number;
+  files: number;
+  storage_bytes: number;
+  provider_runs: number;
+  webhook_events: number;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  role: string;
+  created_at: string | null;
+}
+
+export interface AdminFile {
+  id: string;
+  user_id: string;
+  job_id: string | null;
+  b2_key: string;
+  url: string | null;
+  media_type: string | null;
+  size_bytes: number | null;
+  created_at: string | null;
+}
+
+export interface AdminProviderRun {
+  id: string;
+  job_id: string;
+  provider: string;
+  model: string;
+  run_id: string | null;
+  status: string;
+  cost_usd: number | null;
+  assets_count: number;
+  created_at: string | null;
+}
+
+export interface AdminAuditEvent {
+  id: string;
+  actor_id: string | null;
+  actor_email: string | null;
+  action: string;
+  resource: string;
+  target_id: string | null;
+  detail: Record<string, unknown>;
+  created_at: string | null;
+}

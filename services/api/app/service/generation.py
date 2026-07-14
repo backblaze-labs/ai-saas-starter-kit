@@ -148,39 +148,41 @@ async def generate(*, user_id: str, prompt: str, seed: int | None = None) -> Gen
     )
 
 
+def job_from_row(row: dict) -> GenerationJob:
+    """Map a generation_jobs PostgREST row (with embedded files(*)) to the API
+    model. Shared by the per-user list here and the admin all-jobs list, so the
+    row->model mapping lives in exactly one place."""
+    files = row.get("files") or []
+    return GenerationJob(
+        id=row["id"],
+        user_id=row["user_id"],
+        prompt=row["prompt"],
+        provider=row.get("provider", "nvidia"),
+        model=row["model"],
+        status=row["status"],
+        error=row.get("error"),
+        seed=row.get("seed"),
+        run_id=row.get("run_id"),
+        manifest_uri=row.get("manifest_uri"),
+        canonical_hash=row.get("canonical_hash"),
+        cost_usd=row.get("cost_usd"),
+        created_at=row.get("created_at"),
+        assets=[
+            GeneratedAsset(
+                key=f["b2_key"],
+                url=f.get("url"),
+                sha256=f.get("sha256"),
+                media_type=f.get("media_type") or "image/png",
+                size_bytes=f.get("size_bytes"),
+                width=f.get("width"),
+                height=f.get("height"),
+            )
+            for f in files
+        ],
+    )
+
+
 async def list_jobs(user_id: str, *, limit: int = 50) -> list[GenerationJob]:
     """Return a user's generation jobs (newest first) with their assets."""
     rows = await supabase_generation.list_jobs(user_id, limit=limit)
-    jobs: list[GenerationJob] = []
-    for row in rows:
-        files = row.get("files") or []
-        jobs.append(
-            GenerationJob(
-                id=row["id"],
-                user_id=row["user_id"],
-                prompt=row["prompt"],
-                provider=row.get("provider", "nvidia"),
-                model=row["model"],
-                status=row["status"],
-                error=row.get("error"),
-                seed=row.get("seed"),
-                run_id=row.get("run_id"),
-                manifest_uri=row.get("manifest_uri"),
-                canonical_hash=row.get("canonical_hash"),
-                cost_usd=row.get("cost_usd"),
-                created_at=row.get("created_at"),
-                assets=[
-                    GeneratedAsset(
-                        key=f["b2_key"],
-                        url=f.get("url"),
-                        sha256=f.get("sha256"),
-                        media_type=f.get("media_type") or "image/png",
-                        size_bytes=f.get("size_bytes"),
-                        width=f.get("width"),
-                        height=f.get("height"),
-                    )
-                    for f in files
-                ],
-            )
-        )
-    return jobs
+    return [job_from_row(row) for row in rows]

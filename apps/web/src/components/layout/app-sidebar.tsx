@@ -11,6 +11,7 @@ import {
   UserRound,
   CreditCard,
   Wand2,
+  ShieldCheck,
   LogOut,
 } from "lucide-react";
 import {
@@ -42,7 +43,13 @@ const utilItems = [{ title: "Design System", href: "/design", icon: Sparkles }];
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, isAdmin, signOut } = useAuth();
+
+  // Admin is only shown to admins. The route + every /admin API is also gated
+  // server-side, so hiding the link is a convenience, not the security boundary.
+  const items = isAdmin
+    ? [...navItems, { title: "Admin", href: "/admin", icon: ShieldCheck }]
+    : navItems;
 
   return (
     <Sidebar>
@@ -65,7 +72,7 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
+              {items.map((item) => {
                 const isActive = pathname === item.href;
                 return (
                   <SidebarMenuItem key={item.href}>

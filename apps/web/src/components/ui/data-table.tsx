@@ -3,6 +3,7 @@
 import {
   flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
@@ -10,7 +11,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { useState } from "react";
-import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronsUpDown, Search } from "lucide-react";
 
 import {
   Table,
@@ -21,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
 
 interface DataTableProps<TData, TValue> {
@@ -29,12 +31,15 @@ interface DataTableProps<TData, TValue> {
   pageSize?: number;
   emptyTitle?: string;
   emptyDescription?: string;
+  /** When set, renders a search box that global-filters across all columns. */
+  filterPlaceholder?: string;
 }
 
 /**
  * Reusable sortable + paginated table wrapper built on @tanstack/react-table.
- * Use for any list with > ~25 rows. For small static lists, stick with the
- * bare <Table> primitive.
+ * Pass `filterPlaceholder` to also get a global-filter search box (used by the
+ * admin DataGrids). Use for any list with > ~25 rows. For small static lists,
+ * stick with the bare <Table> primitive.
  */
 export function DataTable<TData, TValue>({
   columns,
@@ -42,8 +47,10 @@ export function DataTable<TData, TValue>({
   pageSize = 10,
   emptyTitle = "No results",
   emptyDescription,
+  filterPlaceholder,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [globalFilter, setGlobalFilter] = useState("");
   // TanStack Table v8 returns mutable functions that the React Compiler
   // can't memoize safely; the team is aware and this is the documented
   // workaround. Re-evaluate when migrating to a future Compiler-friendly
@@ -54,20 +61,33 @@ export function DataTable<TData, TValue>({
     columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
-    state: { sorting },
+    onGlobalFilterChange: setGlobalFilter,
+    state: { sorting, globalFilter },
     initialState: { pagination: { pageSize } },
   });
 
-  const totalRows = data.length;
+  const totalRows = table.getFilteredRowModel().rows.length;
   const { pageIndex, pageSize: ps } = table.getState().pagination;
   const from = totalRows === 0 ? 0 : pageIndex * ps + 1;
   const to = Math.min((pageIndex + 1) * ps, totalRows);
 
   return (
     <div className="space-y-3">
-      <div className="rounded-md border border-border overflow-hidden">
+      {filterPlaceholder && (
+        <div className="relative max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={globalFilter}
+            onChange={(e) => table.setGlobalFilter(e.target.value)}
+            placeholder={filterPlaceholder}
+            className="h-8 pl-8 text-sm"
+          />
+        </div>
+      )}
+      <div className="rounded-md border border-border overflow-x-auto">
         <Table className="table-fixed">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

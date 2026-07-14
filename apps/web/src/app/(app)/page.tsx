@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { Upload } from "lucide-react";
+import { Wand2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { StatsCards } from "@/components/dashboard/stats-cards";
-import { RecentUploadsTable } from "@/components/dashboard/recent-uploads-table";
+import { SaasStatsCards } from "@/components/dashboard/saas-stats-cards";
+import { RecentGenerationsTable } from "@/components/dashboard/recent-generations-table";
 import { UploadChart } from "@/components/dashboard/upload-chart";
 
 export default function DashboardPage() {
@@ -13,23 +13,23 @@ export default function DashboardPage() {
         <div>
           <h1 className="page-title">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1.5">
-            Overview of your Backblaze B2 storage activity.
+            Your plan, storage, and AI generation activity at a glance.
           </p>
         </div>
         <Button asChild size="sm" className="h-8">
-          <Link href="/upload">
-            <Upload className="h-3.5 w-3.5" />
-            Upload files
+          <Link href="/generate">
+            <Wand2 className="h-3.5 w-3.5" />
+            New generation
           </Link>
         </Button>
       </div>
-      <StatsCards />
+      <SaasStatsCards />
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="animate-fade-in-up stagger-3">
           <UploadChart />
         </div>
         <div className="animate-fade-in-up stagger-4">
-          <RecentUploadsTable />
+          <RecentGenerationsTable />
         </div>
       </div>
     </div>

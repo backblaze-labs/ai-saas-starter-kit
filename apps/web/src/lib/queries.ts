@@ -7,6 +7,13 @@ import {
   createPortal,
   deleteFile,
   generateImage,
+  getAdminAudit,
+  getAdminFiles,
+  getAdminJobs,
+  getAdminOverview,
+  getAdminProviderRuns,
+  getAdminSubscriptions,
+  getAdminUsers,
   getEntitlements,
   getFiles,
   getFileStats,
@@ -17,13 +24,20 @@ import {
   getProPreview,
   getSubscription,
   getUploadActivity,
+  setUserRole,
   type Me,
 } from "@/lib/api-client";
 import type {
+  AdminAuditEvent,
+  AdminFile,
+  AdminOverview,
+  AdminProviderRun,
+  AdminUser,
   Entitlements,
   FileMetadata,
   GenerationJob,
   Plan,
+  Role,
   Subscription,
 } from "@ai-media-saas-starter/shared";
 
@@ -44,6 +58,15 @@ export const qk = {
   entitlements: () => [...qk.all, "entitlements"] as const,
   proPreview: () => [...qk.all, "proPreview"] as const,
   generationJobs: () => [...qk.all, "generationJobs"] as const,
+  admin: {
+    overview: () => [...qk.all, "admin", "overview"] as const,
+    users: () => [...qk.all, "admin", "users"] as const,
+    subscriptions: () => [...qk.all, "admin", "subscriptions"] as const,
+    jobs: () => [...qk.all, "admin", "jobs"] as const,
+    files: () => [...qk.all, "admin", "files"] as const,
+    providerRuns: () => [...qk.all, "admin", "providerRuns"] as const,
+    audit: () => [...qk.all, "admin", "audit"] as const,
+  },
 };
 
 export function useFiles(prefix = "", limit = 100) {
@@ -180,6 +203,90 @@ export function useGenerate() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.generationJobs() });
       qc.invalidateQueries({ queryKey: qk.all });
+    },
+  });
+}
+
+// --- Admin -----------------------------------------------------------------
+// All admin queries are gated to admins server-side (401/403). The console only
+// mounts these hooks after `admin/page.tsx` confirms the caller is an admin (it
+// renders null otherwise), so in practice a non-admin never fires them. The
+// optional `enabled` flag is kept for callers that want to defer a fetch;
+// retry:false stops a 403 from spinning.
+
+export function useAdminOverview(enabled = true) {
+  return useQuery<AdminOverview, ApiError>({
+    queryKey: qk.admin.overview(),
+    queryFn: getAdminOverview,
+    enabled,
+    retry: false,
+  });
+}
+
+export function useAdminUsers(enabled = true) {
+  return useQuery<AdminUser[], ApiError>({
+    queryKey: qk.admin.users(),
+    queryFn: getAdminUsers,
+    enabled,
+    retry: false,
+  });
+}
+
+export function useAdminSubscriptions(enabled = true) {
+  return useQuery<Subscription[], ApiError>({
+    queryKey: qk.admin.subscriptions(),
+    queryFn: getAdminSubscriptions,
+    enabled,
+    retry: false,
+  });
+}
+
+export function useAdminJobs(enabled = true) {
+  return useQuery<GenerationJob[], ApiError>({
+    queryKey: qk.admin.jobs(),
+    queryFn: getAdminJobs,
+    enabled,
+    retry: false,
+  });
+}
+
+export function useAdminFiles(enabled = true) {
+  return useQuery<AdminFile[], ApiError>({
+    queryKey: qk.admin.files(),
+    queryFn: getAdminFiles,
+    enabled,
+    retry: false,
+  });
+}
+
+export function useAdminProviderRuns(enabled = true) {
+  return useQuery<AdminProviderRun[], ApiError>({
+    queryKey: qk.admin.providerRuns(),
+    queryFn: getAdminProviderRuns,
+    enabled,
+    retry: false,
+  });
+}
+
+export function useAdminAudit(enabled = true) {
+  return useQuery<AdminAuditEvent[], ApiError>({
+    queryKey: qk.admin.audit(),
+    queryFn: getAdminAudit,
+    enabled,
+    retry: false,
+  });
+}
+
+// Change a user's role. Invalidates the users list, the audit log, and the
+// overview counts (admin count may shift).
+export function useSetUserRole() {
+  const qc = useQueryClient();
+  return useMutation<AdminUser, ApiError, { userId: string; role: Role }>({
+    mutationFn: ({ userId, role }) => setUserRole(userId, role),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.admin.users() });
+      qc.invalidateQueries({ queryKey: qk.admin.audit() });
+      qc.invalidateQueries({ queryKey: qk.admin.overview() });
     },
   });
 }
