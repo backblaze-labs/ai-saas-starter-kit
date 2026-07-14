@@ -8,7 +8,7 @@ Stop wiring boilerplate and start building. This open-source starter kit gives d
 - **Subscription billing** — Stripe Checkout + Billing Portal, Free/Pro/Team plans, webhook→database sync, and plan-gating
 - **AI media generation** — a text-to-image workflow (NVIDIA NIM `flux.1-schnell`) orchestrated by the Genblaze SDK, written to B2 with a SHA-256 provenance manifest
 - **Admin console** — filterable, paginated DataGrids over users, subscriptions, jobs, files, and provider runs, plus an audit log
-- **File manager** — drag-and-drop upload with progress + a browser with preview, download, delete, and metadata extraction
+- **File manager** — drag-and-drop upload with progress + a browser with preview, download, and delete; uploads return rich file metadata (checksums, dimensions, EXIF) in the API response
 - **Full-stack UI** (Next.js 16 + React 19 + Tailwind v4 + shadcn/ui) on a strictly layered FastAPI backend with structural tests
 - **Agent-optimized docs** — your AI coding agent can read the repo and start contributing immediately
 
@@ -196,7 +196,7 @@ Full production topology — Vercel + Railway/Render/Fly, hosted Supabase, Strip
 - [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress
 - [File Browser](docs/features/file-browser.md) — list, preview, download, delete files
 - [Dashboard](docs/features/dashboard.md) — stats cards, upload chart, recent uploads
-- [Metadata Extraction](docs/features/metadata-extraction.md) — image dimensions, EXIF, PDF info, checksums
+- [Metadata Extraction](docs/features/metadata-extraction.md) — the upload API extracts rich metadata (checksums, image dimensions, EXIF, PDF info) and returns it in the upload response; the file browser surfaces basic metadata (size, type, upload date)
 - [Design System](docs/design-system.md) — tokens, primitives, AI elements, the blaze generating loader, and inline `ErrorState` / `EmptyState` patterns. Live preview at `/design`.
 - Inline error handling — fetch failures surface *what's wrong* (API offline, 401, 5xx) and offer a Retry, instead of silently rendering empty state.
 - Single-source config — one `.env` at the repo root powers both API and web app, validated at startup so misconfig fails fast with a readable message.

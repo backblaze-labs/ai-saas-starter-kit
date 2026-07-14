@@ -1,20 +1,20 @@
-<!-- last_verified: 2026-03-06 -->
+<!-- last_verified: 2026-07-14 -->
 # Feature: Metadata Extraction
 
 ## Purpose
-Extract rich metadata from uploaded files and return it alongside upload results.
+Extract rich metadata from uploaded files and return it in the `POST /upload` response.
+
+## Scope
+Rich metadata is computed at upload time and returned in the `POST /upload` response, but it is **not persisted**. The file-browser endpoints (`GET /files-by-key/metadata`) therefore return **basic** metadata only (size, type, key, upload date), and the browser preview shows those basic fields. Persisting the rich metadata so the browser can surface it is tracked in [tech-debt-tracker.md](../exec-plans/tech-debt-tracker.md).
 
 ## Used By
-- API: `POST /upload` (called after B2 upload)
-- UI: upload results, file metadata panel
+- API: `POST /upload` (called after B2 upload; the rich metadata is returned in the upload response)
 
 ## Core Functions
 - `services/api/app/service/metadata.py` — `extract_metadata()`, `_extract_image_metadata()`, `_extract_pdf_metadata()`
-- `apps/web/src/components/files/file-metadata-panel.tsx` — displays metadata in structured card
 
 ## Canonical Files
 - Metadata extraction pattern: `services/api/app/service/metadata.py`
-- Metadata display component: `apps/web/src/components/files/file-metadata-panel.tsx`
 
 ## Inputs
 - file_data: bytes
@@ -33,8 +33,7 @@ Extract rich metadata from uploaded files and return it alongside upload results
 - Computes MD5 and SHA-256 hashes
 - If image: opens with Pillow, extracts dimensions and EXIF data
 - If PDF: opens with PyPDF2, extracts page count, author, title
-- Returns `FileMetadataDetail` model
-- Frontend displays metadata in file-metadata-panel component
+- Returns `FileMetadataDetail` model in the `POST /upload` response
 
 ## Edge Cases
 - Corrupt image → Pillow fails silently, image fields remain null
@@ -44,7 +43,7 @@ Extract rich metadata from uploaded files and return it alongside upload results
 - Large file → hashing may be slow (computed in-memory)
 
 ## UX States
-- Not applicable (metadata is part of upload response and file preview)
+- Not applicable. The rich metadata is part of the `POST /upload` response; the file-browser preview surfaces basic fields only (size, type, key, upload date) — see Scope.
 
 ## Verification
 - Test files: `services/api/tests/` (no dedicated metadata tests yet)

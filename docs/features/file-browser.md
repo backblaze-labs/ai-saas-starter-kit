@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-06-26 -->
+<!-- last_verified: 2026-07-14 -->
 # Feature: File Browser
 
 ## Purpose
@@ -13,7 +13,6 @@ List, preview, download, and delete files stored in Backblaze B2.
 - `apps/web/src/components/files/file-browser.tsx` — tree view container with loading, empty, error, refresh, preview, download, and delete flows
 - `apps/web/src/components/files/file-tree-row.tsx` — recursive folder/file rows with keyboard-friendly actions and long-name handling
 - `apps/web/src/components/files/file-preview.tsx` — dialog modal for file preview
-- `apps/web/src/components/files/file-metadata-panel.tsx` — structured metadata display
 - `apps/web/src/lib/file-tree.ts` — `buildFileTree()` converts flat S3 keys to folder/file hierarchy
 - `apps/web/src/lib/api-client.ts` — `getFiles()`, `getFile()`, `getDownloadUrl()`, `getPreviewUrl()`, `deleteFile()`; sends object keys as query parameters so slashes and reserved route names cannot be decoded into path segments
 - `services/api/app/runtime/files.py` — HTTP handlers for list, get, download, delete

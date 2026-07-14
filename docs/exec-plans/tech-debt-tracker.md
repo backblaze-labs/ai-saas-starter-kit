@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-03-10 -->
+<!-- last_verified: 2026-07-14 -->
 # Tech Debt Tracker
 
 Known tech debt items. Agents update this when they discover or create tech debt.
@@ -14,3 +14,4 @@ Known tech debt items. Agents update this when they discover or create tech debt
 | `humanizeBytes` duplicated in TypeScript | DRY violation | Extract to `lib/utils.ts` | Low | Open |
 | `formatDate` duplicated in TypeScript | DRY violation | Extract to `lib/utils.ts` | Low | Open |
 | No test harness for feature specs | No automated verification | Add pytest fixtures + test files per feature | Medium | Resolved (partial — tests added for upload, files, activity, errors) |
+| Rich file metadata not surfaced in the browser | Extracted at upload and returned in the `POST /upload` response but not persisted, so `GET /files-by-key/metadata` and the browser preview show basic metadata (size, type, key, date) only | Persist rich metadata at upload (e.g. in the `files` table) + return it from `GET /files-by-key/metadata`, then render it in the preview dialog | Low | Open |
