@@ -1,14 +1,16 @@
-<!-- last_verified: 2026-05-01 -->
+<!-- last_verified: 2026-07-14 -->
 # AI Media SaaS Starter
 
-Stop wiring boilerplate and start building. This open-source starter kit gives vibe coders and AI coding agents a production-ready foundation — a full-stack TypeScript + Python template with a pre-built dashboard UI, file upload system, and **[Backblaze B2](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter)** cloud storage already integrated. Save thousands of tokens on setup prompts, skip the "build me a dashboard from scratch" loop, and go straight to building your app's unique features.
+Stop wiring boilerplate and start building. This open-source starter kit gives developers and AI coding agents a production-ready **SaaS** foundation — a full-stack TypeScript + Python template with authentication, subscription billing, an AI media-generation workflow, an admin console, and a file manager, all wired to **[Backblaze B2](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter)** cloud storage. Save thousands of tokens on setup prompts, skip the "build me auth, billing, and a dashboard from scratch" loop, and go straight to building your app's unique features.
 
 **What you get out of the box:**
-- Full-stack dashboard UI (Next.js 16 + React 19 + Tailwind v4 + shadcn/ui)
-- File upload with drag-and-drop, progress tracking, and metadata extraction
-- File browser with preview, download, and delete
-- FastAPI backend with strict layered architecture and structural tests
-- Agent-optimized docs — your AI coding agent can read the repo and start contributing immediately
+- **Authentication** — Supabase email/password + email-code (OTP) sign-in, protected routes, profiles, and an admin role
+- **Subscription billing** — Stripe Checkout + Billing Portal, Free/Pro/Team plans, webhook→database sync, and plan-gating
+- **AI media generation** — a text-to-image workflow (NVIDIA NIM `flux.1-schnell`) orchestrated by the Genblaze SDK, written to B2 with a SHA-256 provenance manifest
+- **Admin console** — filterable, paginated DataGrids over users, subscriptions, jobs, files, and provider runs, plus an audit log
+- **File manager** — drag-and-drop upload with progress + a browser with preview, download, delete, and metadata extraction
+- **Full-stack UI** (Next.js 16 + React 19 + Tailwind v4 + shadcn/ui) on a strictly layered FastAPI backend with structural tests
+- **Agent-optimized docs** — your AI coding agent can read the repo and start contributing immediately
 
 ## What it looks like
 
@@ -80,7 +82,7 @@ cd my-cool-app
 **Option 2: Clone and reinitialize**
 
 ```bash
-git clone https://github.com/backblaze-b2-samples/ai-media-saas-starter.git my-cool-app
+git clone https://github.com/backblaze-labs/ai-media-saas-starter.git my-cool-app
 cd my-cool-app
 rm -rf .git
 git init
@@ -148,7 +150,11 @@ node scripts/sync-supabase-env.mjs   # writes the local Supabase keys into .env
 
 Billing is powered by [Stripe](https://stripe.com). The app boots fine without it — the billing endpoints just return `503` and the file manager works unchanged — so you can skip this and come back later. To enable it, grab **test-mode** keys from the [Stripe Dashboard](https://dashboard.stripe.com/test/apikeys), create a recurring Price for each paid plan, and fill `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO`, and `STRIPE_PRICE_TEAM` in `.env` (see `.env.example`). Forward webhooks to your local API with the [Stripe CLI](https://stripe.com/docs/stripe-cli): `stripe listen --forward-to localhost:8000/billing/webhook`. Test with card `4242 4242 4242 4242`.
 
-**6. Run it**
+**6. Set up AI media generation (optional)**
+
+The marquee `/generate` workflow turns a text prompt into an image via NVIDIA NIM (`flux.1-schnell`), orchestrated by the [Genblaze](https://pypi.org/project/genblaze-core/) SDK and written to B2 with a SHA-256 provenance manifest. The app boots fine without it — the endpoint returns a clean `503` — so this is optional. To enable it, grab a free key with starter credits at [build.nvidia.com](https://build.nvidia.com) (it looks like `nvapi-...`) and set `NVIDIA_API_KEY` in `.env`. Generation is **Pro-gated**, so sign in on a Pro plan (a Stripe test checkout is enough) to try it. The model and image size are configurable via `NVIDIA_IMAGE_MODEL` and the `GENERATION_*` settings in `services/api/app/config/settings.py`.
+
+**7. Run it**
 
 ```bash
 pnpm dev
@@ -171,10 +177,22 @@ When you adapt this kit for a new app, keep the shared scaffolding and only swap
 
 Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AGENTS.md#2-building-on-this-starter-kit).
 
+## Deploy
+
+Deploy the **frontend** to Vercel in one click, then host the **backend** (FastAPI) on Railway, Render, or Fly.io:
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbackblaze-labs%2Fai-media-saas-starter&root-directory=apps%2Fweb&project-name=ai-media-saas-starter&repository-name=ai-media-saas-starter&env=NEXT_PUBLIC_API_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY&envDescription=The%20frontend%20needs%20your%20backend%20API%20origin%20plus%20your%20Supabase%20project%20URL%20and%20anon%20key&envLink=https%3A%2F%2Fgithub.com%2Fbackblaze-labs%2Fai-media-saas-starter%2Fblob%2Fmain%2Fdocs%2Fdeployment.md)
+
+> When importing, set the **Root Directory** to `apps/web` (this is a pnpm monorepo). Deploy the backend first so you have its URL for `NEXT_PUBLIC_API_URL`.
+
+Full production topology — Vercel + Railway/Render/Fly, hosted Supabase, Stripe live-mode, and B2 — is in **[docs/deployment.md](docs/deployment.md)**.
+
 ## Core Features
 
 - [Authentication](docs/features/authentication.md) — Supabase email/password + email-code (OTP) sign-in, protected routes, profiles, and an admin role
 - [Billing](docs/features/billing.md) — Stripe Checkout + Billing Portal, Free/Pro/Team plans, webhook→Supabase sync, and plan-gating (`require_plan`)
+- [AI Media Generation](docs/features/generation.md) — text-to-image (NVIDIA NIM `flux.1-schnell`) via the Genblaze SDK → B2 with a SHA-256 provenance manifest; Pro-gated, and outputs land in the file manager
+- [Admin Console](docs/features/admin.md) — filterable, paginated DataGrids (users, subscriptions, jobs, files, provider runs) + an audit log; admin-gated
 - [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress
 - [File Browser](docs/features/file-browser.md) — list, preview, download, delete files
 - [Dashboard](docs/features/dashboard.md) — stats cards, upload chart, recent uploads
@@ -218,7 +236,8 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 |-----|---------|
 | [AGENTS.md](AGENTS.md) | Agent table of contents — start here |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System layout, layering, data flows |
-| [docs/features/](docs/features/) | Feature docs (auth, billing, upload, browser, dashboard, metadata) |
+| [docs/deployment.md](docs/deployment.md) | Production deploy — Vercel + Railway/Render/Fly, hosted Supabase, Stripe live-mode |
+| [docs/features/](docs/features/) | Feature docs (auth, billing, generation, admin, upload, browser, dashboard, metadata) |
 | [docs/design-system.md](docs/design-system.md) | Design tokens, primitives, AI elements, loader, error/empty states |
 | [docs/app-workflows.md](docs/app-workflows.md) | User journeys |
 | [docs/dev-workflows.md](docs/dev-workflows.md) | Engineering workflows and testing |
