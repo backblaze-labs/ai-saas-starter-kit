@@ -151,7 +151,7 @@ export default function GeneratePage() {
           Generate
         </h1>
         <p className="mt-1.5 max-w-prose text-sm text-muted-foreground text-pretty">
-          Describe an image; NVIDIA NIM (flux.1-schnell) generates it and writes
+          Describe an image; NVIDIA NIM (flux.1-dev) generates it and writes
           it — with a SHA-256 provenance manifest — to your Backblaze B2 bucket.
           It appears here and in the file manager.
         </p>

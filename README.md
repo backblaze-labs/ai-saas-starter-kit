@@ -6,7 +6,7 @@ Stop wiring boilerplate and start building. This open-source starter kit gives d
 **What you get out of the box:**
 - **Authentication** — Supabase email/password + email-code (OTP) sign-in, protected routes, profiles, and an admin role
 - **Subscription billing** — Stripe Checkout + Billing Portal, Free/Pro/Team plans, webhook→database sync, and plan-gating
-- **AI media generation** — a text-to-image workflow (NVIDIA NIM `flux.1-schnell`) orchestrated by the Genblaze SDK, written to B2 with a SHA-256 provenance manifest
+- **AI media generation** — a text-to-image workflow (NVIDIA NIM `flux.1-dev`) orchestrated by the Genblaze SDK, written to B2 with a SHA-256 provenance manifest
 - **Admin console** — filterable, paginated DataGrids over users, subscriptions, jobs, files, and provider runs, plus an audit log
 - **File manager** — drag-and-drop upload with progress + a browser with preview, download, and delete; uploads return rich file metadata (checksums, dimensions, EXIF) in the API response
 - **Full-stack UI** (Next.js 16 + React 19 + Tailwind v4 + shadcn/ui) on a strictly layered FastAPI backend with structural tests
@@ -162,7 +162,7 @@ New to Stripe? Follow the [step-by-step Stripe billing setup guide](docs/stripe-
 
 **6. Set up AI media generation (optional)**
 
-The marquee `/generate` workflow turns a text prompt into an image via NVIDIA NIM (`flux.1-schnell`), orchestrated by the [Genblaze](https://pypi.org/project/genblaze-core/) SDK and written to B2 with a SHA-256 provenance manifest. The app boots fine without it — the endpoint returns a clean `503` — so this is optional. To enable it, grab a free key with starter credits at [build.nvidia.com](https://build.nvidia.com) (it looks like `nvapi-...`) and set `NVIDIA_API_KEY` in `.env`. Generation is **Pro-gated**, so sign in on a Pro plan (a Stripe test checkout is enough) to try it. The model and image size are configurable via `NVIDIA_IMAGE_MODEL` and the `GENERATION_*` settings in `services/api/app/config/settings.py`.
+The marquee `/generate` workflow turns a text prompt into an image via NVIDIA NIM (`flux.1-dev`), orchestrated by the [Genblaze](https://pypi.org/project/genblaze-core/) SDK and written to B2 with a SHA-256 provenance manifest. The app boots fine without it — the endpoint returns a clean `503` — so this is optional. To enable it, grab a free key with starter credits at [build.nvidia.com](https://build.nvidia.com) (it looks like `nvapi-...`) and set `NVIDIA_API_KEY` in `.env`. Generation is **Pro-gated**, so sign in on a Pro plan (a Stripe test checkout is enough) to try it. The model and image size are configurable via `NVIDIA_IMAGE_MODEL` and the `GENERATION_*` settings in `services/api/app/config/settings.py`.
 
 **7. Run it**
 
@@ -201,7 +201,7 @@ Full production topology — Vercel + Railway/Render/Fly, hosted Supabase, Strip
 
 - [Authentication](docs/features/authentication.md) — Supabase email/password + email-code (OTP) sign-in, protected routes, profiles, and an admin role
 - [Billing](docs/features/billing.md) — Stripe Checkout + Billing Portal, Free/Pro/Team plans, webhook→Supabase sync, and plan-gating (`require_plan`)
-- [AI Media Generation](docs/features/generation.md) — text-to-image (NVIDIA NIM `flux.1-schnell`) via the Genblaze SDK → B2 with a SHA-256 provenance manifest; Pro-gated, and outputs land in the file manager
+- [AI Media Generation](docs/features/generation.md) — text-to-image (NVIDIA NIM `flux.1-dev`) via the Genblaze SDK → B2 with a SHA-256 provenance manifest; Pro-gated, and outputs land in the file manager
 - [Admin Console](docs/features/admin.md) — filterable, paginated DataGrids (users, subscriptions, jobs, files, provider runs) + an audit log; admin-gated
 - [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress
 - [File Browser](docs/features/file-browser.md) — list, preview, download, delete files

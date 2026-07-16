@@ -1,9 +1,9 @@
-<!-- last_verified: 2026-07-08 -->
+<!-- last_verified: 2026-07-16 -->
 # Feature: AI Media Generation (Genblaze + NVIDIA NIM)
 
 ## Purpose
 The app's marquee workflow: turn a text prompt into an image via NVIDIA NIM
-(`flux.1-schnell`), orchestrated by the Genblaze SDK and written — with a
+(`flux.1-dev`), orchestrated by the Genblaze SDK and written — with a
 SHA-256 provenance manifest — to Backblaze B2. It is gated behind a paid plan
 and its outputs also appear in the B2-backed file manager.
 

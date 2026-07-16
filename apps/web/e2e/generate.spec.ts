@@ -54,7 +54,7 @@ test.describe("generation flow (Pro + NVIDIA)", () => {
     await page.getByTestId("generate-prompt").fill("a single red apple on a white studio background");
     await page.getByTestId("generate-submit").click();
 
-    // flux.1-schnell + B2 upload — allow generous wall-clock.
+    // flux.1-dev + B2 upload — allow generous wall-clock.
     await expect(page.getByTestId("generate-result")).toBeVisible({ timeout: 120_000 });
     await expect(page.getByTestId("generate-result").locator("img").first()).toBeVisible();
   });

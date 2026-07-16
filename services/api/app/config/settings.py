@@ -52,13 +52,18 @@ class Settings(BaseSettings):
     # Optional to boot: the /generation endpoint returns a clean 503 when the
     # key is missing, so the auth + billing + file-manager scaffold runs without
     # it. Get a free key (with starter credits) at https://build.nvidia.com.
-    # The model + image params are env-configurable; flux.1-schnell is a fast,
-    # cheap 4-step distilled model — a good default for a demo.
+    # The model + image params are env-configurable. Default is flux.1-dev: the
+    # faster 4-step distilled sibling flux.1-schnell is cheaper, but NVIDIA's
+    # hosted schnell endpoint has been unreliable (it accepts the request then
+    # hangs until the timeout fires), so dev is the dependable default. dev is
+    # guidance-distilled, so it needs ~25 steps rather than schnell's 4 for a
+    # clean image; swap NVIDIA_IMAGE_MODEL back to flux.1-schnell (and drop
+    # GENERATION_STEPS to 4) if/when its hosted endpoint is healthy again.
     nvidia_api_key: str = ""
-    nvidia_image_model: str = "black-forest-labs/flux.1-schnell"
+    nvidia_image_model: str = "black-forest-labs/flux.1-dev"
     generation_width: int = 1024
     generation_height: int = 1024
-    generation_steps: int = 4
+    generation_steps: int = 25
     # Provider budget: passed to the Genblaze run AND the NVIDIA client's
     # http/nvcf timeouts, so the SDK gives up on a slow provider.
     generation_run_timeout: int = 90

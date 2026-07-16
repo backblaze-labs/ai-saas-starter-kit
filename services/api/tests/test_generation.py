@@ -81,7 +81,7 @@ def _fake_result(**over):
         "manifest_uri": "b2://bucket/generated/u/2026-07-08/run-abc/manifest.json",
         "canonical_hash": "a" * 64,
         "cost_usd": None,
-        "model": "black-forest-labs/flux.1-schnell",
+        "model": "black-forest-labs/flux.1-dev",
         "assets": [
             {
                 "key": "generated/u/2026-07-08/run-abc/img.png",

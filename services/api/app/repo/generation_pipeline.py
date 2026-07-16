@@ -6,7 +6,7 @@ provider-orchestration import (``genblaze_core`` / ``genblaze_nvidia`` /
 tests/test_structure.py::test_genblaze_only_in_repo). The service and runtime
 layers consume the plain dict this module returns, never a Genblaze type.
 
-Text-to-image via NVIDIA NIM ``flux.1-schnell``: a step with no inputs is a
+Text-to-image via NVIDIA NIM ``flux.1-dev``: a step with no inputs is a
 plain generation (no reference image), so — unlike a reference-faithful *edit*
 route — we pass just a prompt plus image params. Each run's assets and a
 SHA-256 provenance manifest are written to B2 under
