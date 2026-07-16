@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-08 -->
+<!-- last_verified: 2026-07-16 -->
 # Feature: Authentication
 
 ## Purpose
@@ -19,6 +19,7 @@ signed-in user, and introduce the first real database (profiles + roles).
 - `public.handle_new_user()` / `public.is_admin()` / `public.prevent_role_escalation()` (migration).
 
 ## Canonical Files
+- Email confirmation landing: `apps/web/src/app/auth/confirm/route.ts` (handles `?code=` and `?token_hash=`)
 - Route protection: `apps/web/src/proxy.ts` + `apps/web/src/lib/supabase/middleware.ts`
 - DB + RLS: `supabase/migrations/20260708170211_auth_profiles_roles.sql`
 - API auth: `services/api/app/runtime/auth.py` (thin) → `service/auth.py` → `repo/supabase_auth.py`
@@ -34,7 +35,10 @@ signed-in user, and introduce the first real database (profiles + roles).
 
 ## Flow
 - Sign up → Supabase sends a confirmation email → user clicks the link → `/auth/confirm`
-  verifies the token (`verifyOtp`) and sets the session → redirect into the app.
+  completes it and sets the session → redirect into the app. The route accepts both
+  Supabase link shapes: `?code=` (PKCE, from the default `{{ .ConfirmationURL }}`
+  template that hosted free-tier projects send) via `exchangeCodeForSession`, and
+  `?token_hash=&type=` (the local custom template) via `verifyOtp`.
 - Sign in (password or email OTP) → session cookies set → redirect to `next` (default `/`).
 - Every request passes through `proxy.ts`: no session on a protected route → `/signin?next=…`.
 - Client API calls attach the access token (`lib/api-client.ts`); the API validates it
@@ -42,6 +46,14 @@ signed-in user, and introduce the first real database (profiles + roles).
 
 ## Edge Cases
 - Invalid/expired confirmation link → redirect to `/signin?error=confirmation-failed`.
+- PKCE (`?code=`) confirmation requires the `code_verifier` cookie set at signup, so
+  the link must be opened in the **same browser** that signed up. Cross-device
+  confirmation needs the `token_hash` template (a custom template → custom SMTP on
+  hosted free tier).
+- Corporate mail scanners (Proofpoint URL Defense, Microsoft SafeLinks, Mimecast)
+  pre-fetch links and can consume the single-use token before the user clicks,
+  yielding `confirmation-failed`. Use a non-scanning address for testing; production
+  should use a verified sending domain.
 - Signed-in user visiting `/signin` or `/signup` → redirected into the app.
 - `next` param that isn't a same-site relative path → ignored (no open redirect).
 - Non-admin editing their own `role` → blocked by `prevent_role_escalation` trigger.

@@ -113,6 +113,15 @@ the same shape — set the root directory to `services/api`, install with
 > announcing the app, or remove the auto-promote branch in the auth migration and
 > grant admin manually. See [SECURITY.md](SECURITY.md).
 
+> ℹ️ **Signup email deliverability.** `/auth/confirm` handles Supabase's default
+> confirmation link out of the box, so signup works on the free tier with no email
+> config. But the built-in sender is rate-limited to a few emails/hour, and the
+> single-use link can be **consumed by corporate mail scanners** (Proofpoint URL
+> Defense, Microsoft SafeLinks, Mimecast) before the user clicks — which surfaces
+> as `confirmation-failed`. For production, configure a **custom SMTP provider**
+> (Resend/Postmark/SES) with a verified sending domain; this also unlocks a branded
+> `token_hash` template that confirms across devices.
+
 ## 4. Stripe (production billing)
 
 1. Switch the [Stripe Dashboard](https://dashboard.stripe.com) to **live mode** and
@@ -140,7 +149,7 @@ same prefixes documented in [features/generation.md](features/generation.md) and
 
 - [ ] Backend `/health` returns `200` (confirms B2 connectivity).
 - [ ] Frontend loads and `NEXT_PUBLIC_API_URL` points at the backend (no CORS errors in the console).
-- [ ] Sign up → confirm email (hosted Supabase sends a real email) → reach `/dashboard`.
+- [ ] Sign up → confirm email (hosted Supabase sends a real email; use a non-scanning address) → reach `/dashboard`.
 - [ ] `/billing` → Stripe Checkout → webhook flips the subscription row in Supabase.
 - [ ] `/generate` (on a Pro plan) produces an image under `generated/…` in B2 and it appears in `/files`.
 - [ ] `/admin` is reachable by your admin account and returns `403` for a normal user.
