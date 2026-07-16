@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-14 -->
+<!-- last_verified: 2026-07-15 -->
 # Feature: File Browser
 
 ## Purpose
@@ -32,7 +32,7 @@ List, preview, download, and delete files stored in Backblaze B2.
 ## Outputs
 - `GET /files` → `FileMetadata[]` (sorted most recent first)
 - `GET /files-by-key/metadata?key=...` → `FileMetadata`
-- `GET /files-by-key/download?key=...` → `{ url: string }` (presigned URL, attachment disposition, 10-min expiry). Increments the `total_downloads` counter exposed on `/files/stats`. The counter is persisted to `services/api/data/download_count.json` (override via `DOWNLOAD_COUNT_FILE` env var) so it survives API restarts.
+- `GET /files-by-key/download?key=...` → `{ url: string }` (presigned URL, attachment disposition, 10-min expiry). Increments the `total_downloads` counter exposed on `/files/stats`. The counter is persisted via `repo/counter.py` to `services/api/data/download_count.json` (override via `DOWNLOAD_COUNT_FILE`). It survives a local process restart; see [RELIABILITY.md](../RELIABILITY.md#stateful-counters--durability-caveats) for its limits on ephemeral filesystems and across replicas.
 - `GET /files-by-key/preview?key=...` → `{ url: string }` (presigned URL for inline rendering, 10-min expiry). Does **not** increment the download counter — used by the preview modal for images / PDFs.
 - `DELETE /files-by-key?key=...` → `{ deleted: true, key: string }`
 - Legacy `/files/{key}` routes remain available for compatibility. The web client uses them only as a rolling-deploy fallback when `/files-by-key` is unavailable and the key is safe to place in a legacy path.
@@ -68,8 +68,8 @@ List, preview, download, and delete files stored in Backblaze B2.
 - Test files: `services/api/tests/test_file_key_routes.py`, `apps/web/src/lib/api-client.test.ts`
 - Required cases: list files, empty list, file not found, presigned URL generation, delete success, delete failure
 - Quick verify command: `pnpm test:api`
-- Client route-construction tests: `pnpm --filter @ai-media-saas-starter/web test`
-- Full verify command: `pnpm lint && pnpm --filter @ai-media-saas-starter/web test && pnpm build && pnpm lint:api && pnpm test:api && pnpm check:structure`
+- Client route-construction tests: `pnpm test:web`
+- Full verify command: `pnpm lint && pnpm test:web && pnpm build && pnpm lint:api && pnpm test:api && pnpm check:structure`
 - Pass criteria: all pytest tests green, no ruff violations
 
 ## Related Docs

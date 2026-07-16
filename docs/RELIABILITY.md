@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-06-25 -->
+<!-- last_verified: 2026-07-15 -->
 # Reliability
 
 Reliability expectations and practices for this project.
@@ -27,6 +27,18 @@ Reliability expectations and practices for this project.
 - Request timing middleware logs duration for every request
 - `/metrics` endpoint exposes basic Prometheus-format counters
 - Upload success/failure counts tracked
+
+## Stateful Counters — durability caveats
+
+The download counter and the `/metrics` counters are **in-process, per replica**. Consequences to plan for before scaling:
+
+- **Download counter** (`app/repo/counter.py`) persists to a JSON file at `DOWNLOAD_COUNT_FILE` (default `data/download_count.json`). On an ephemeral filesystem (Railway without a mounted volume) it **resets to 0 on every redeploy**. With multiple replicas each keeps its own file/count. For durable, shared counts: mount a persistent volume, or swap the adapter for Redis/DB.
+- **`/metrics` counters** live in process memory and reset on restart. Behind a load balancer, each replica reports only its own slice — scrape with an instance label and aggregate, or push to a shared collector.
+
+## Rate Limiting
+
+- Per-IP fixed-window limiter (`app/runtime/ratelimit.py`); `RATE_LIMIT_PER_MINUTE` / `RATE_LIMIT_WRITE_PER_MINUTE` are the budgets. Rejected requests get `429` with a `Retry-After` header.
+- Counters are in-process per replica; horizontal scaling needs a shared store (e.g. Redis) for a global limit.
 
 ## Graceful Degradation
 

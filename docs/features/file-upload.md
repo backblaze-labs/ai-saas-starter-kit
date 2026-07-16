@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-06-25 -->
+<!-- last_verified: 2026-07-15 -->
 # Feature: File Upload
 
 ## Purpose
@@ -36,11 +36,12 @@ Upload files from the browser to Backblaze B2 with real-time progress tracking.
 - Client validates file size (max 100MB) and type — rejected files remain in the queue with a clear reason and show toast feedback
 - XHR sends multipart POST to `/upload` with progress events
 - API checks `Content-Length` header early to reject oversized requests before reading body
-- API validates content type against allowlist
+- API validates content type against allowlist (SVG excluded — stored-XSS risk)
 - API sanitizes filename (strips path components, null bytes, unsafe chars, limits to 200 chars)
 - API validates file extension matches declared MIME type
 - API reads file in 1MB chunks with streaming size enforcement (max 100MB)
 - API rejects empty files
+- API verifies the leading bytes match the declared type for binary formats (magic-byte signature check)
 - API uses key: `uploads/{sanitized_filename}`
 - API calls `put_object` to B2
 - API extracts file metadata (checksums, image dimensions, PDF info)
@@ -51,6 +52,7 @@ Upload files from the browser to Backblaze B2 with real-time progress tracking.
 - File exceeds 100MB → client-side rejected row + toast; API returns 413 if bypassed
 - File type not in allowlist → API returns 415
 - File extension mismatches MIME type → API returns 415
+- File contents don't match the declared type (e.g. script bytes sent as `image/png`) → API returns 415
 - No filename provided → API returns 400
 - Empty file → API returns 400
 - Duplicate filename → B2 creates a new version (buckets are always versioned)
@@ -66,8 +68,8 @@ Upload files from the browser to Backblaze B2 with real-time progress tracking.
 - Disabled: dropzone explains that new files can be added when the current queue finishes
 
 ## Verification
-- Test files: `services/api/tests/test_upload_conflict.py`, `services/api/tests/test_error_handling.py`
-- Required cases: successful upload, oversized file rejection, disallowed type rejection, missing filename, empty file, duplicate filename allowed
+- Test files: `services/api/tests/test_upload_validation.py`, `services/api/tests/test_upload_conflict.py`, `services/api/tests/test_error_handling.py`
+- Required cases: successful upload, oversized file rejection (413), disallowed type (415), extension mismatch (415), content-signature mismatch (415), missing filename, empty file, duplicate filename allowed, `uploads_total` metric increments
 - Quick verify command: `pnpm test:api`
 - Full verify command: `pnpm lint && pnpm lint:api && pnpm test:api && pnpm check:structure`
 - Pass criteria: all pytest tests green, no ruff violations

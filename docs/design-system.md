@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-04-30 -->
+<!-- last_verified: 2026-07-15 -->
 # Design System
 
 The starter uses a GitHub Primer-flavored token palette with shadcn/ui
@@ -14,12 +14,14 @@ For a live reference, open `/design` in the running app.
 | `--background` | `#ffffff` | `#0d1117` | Canvas |
 | `--foreground` | `#1f2328` | `#f0f6fc` | Text |
 | `--muted` | `#f6f8fa` | `#151b23` | Subtle surfaces, table header rows |
-| `--border` | `#d1d9e0` | `#3d444d` | Divider lines |
+| `--border` | `#e3e8ee` | `#373e47` | Divider lines |
 | `--primary` | `#0969da` | `#4493f8` | CTAs, links, focus ring |
 | `--accent-subtle` | `#ddf4ff` | rgba blue | Active states |
 | `--success` | `#1a7f37` | `#3fb950` | Completion dots, positive deltas |
-| `--attention` | `#9a6700` | `#d29922` | Warnings, folders |
-| `--destructive` | `#cf222e` | `#f85149` | Danger actions |
+| `--attention` | `#8a5d00` | `#d29922` | Warnings, folders |
+| `--destructive` | `#cf222e` | `#f85149` | Danger surfaces (bg + accent text) |
+| `--destructive-foreground` | `#ffffff` | `#ffffff` | Text on filled `--destructive` |
+| `--brand-b2` | `#e42c39` | `#f8535e` | Backblaze brand mark (single source) |
 | `--nav` | `#0d1117` | `#010409` | Top-bar chrome (always dark) |
 
 Access via Tailwind utility (`bg-primary`, `text-muted-foreground`) when a
@@ -29,12 +31,14 @@ tokens (`success`, `attention`, `accent-subtle`) are mapped into Tailwind so
 
 ## Radius
 
-- `--radius-sm` 4px — inputs, small controls
-- `--radius-md` 5px — badges, keyboard hints
-- `--radius-lg` 6px — default (cards, buttons, dialogs)
-- `--radius-xl` 8px — elevated surfaces (popovers)
+Anchored on `--radius: 0.5rem`; the rest derive from it:
 
-6px is the anchor. Rarely deviate.
+- `--radius-sm` — `calc(--radius - 2px)` — inputs, small controls
+- `--radius-md` — `calc(--radius - 1px)` — badges, keyboard hints
+- `--radius-lg` — `--radius` — default (cards, buttons, dialogs)
+- `--radius-xl` — `calc(--radius + 2px)` — elevated surfaces (popovers)
+
+`--radius` is the anchor. Rarely deviate.
 
 ## Elevation
 
@@ -65,28 +69,34 @@ Two font families:
 
 - **Display — Mona Sans** (GitHub's open-source display face), loaded via
   `next/font/google` in `layout.tsx`, exposed as `--font-display` / the
-  `font-display` Tailwind utility. Used for: headings, page titles, stat
-  values, logo, Copilot surfaces.
+  `font-display` Tailwind utility. Used for: `h1` / `.page-title` and the
+  sidebar logo mark. Everything else — section/card titles, stat values,
+  body, labels — uses the system stack.
 - **Body — system stack**: `-apple-system, BlinkMacSystemFont, "Segoe UI", ...`
   Fast, native, zero payload.
 
 Monospace stack: `ui-monospace, SFMono-Regular, "SF Mono", Menlo, ...` — used
 for sizes, keys, shortcuts, and file paths.
 
-**Base size: 15px / line-height 1.55.** Bumped from 14px — feels far less
-cramped in dashboard contexts without breaking Primer's dense tables.
+**Base size: 14px / line-height 1.5**, set on `html` — so `1rem` = `14px` and
+every rem-based token (type, radius, spacing) scales to that root. Keeps
+Primer's dense tables compact.
 
 ### Scale
 
+Sizes below are the literal values declared in `globals.css` (rem where the CSS
+uses rem). At the 14px root, `1rem` = `14px`.
+
 | Role | Size | Weight | Font | Tracking |
 |------|------|--------|------|----------|
-| Page title | 26px (`.page-title`) | 600 | Display | `-0.015em` |
-| Card title | 16px (`.card-title`) | 600 | Display | `-0.01em` |
-| Stat value | 28px | 600 | Display | `-0.015em` |
-| Body | 15px (default) | 400 | Body | — |
-| Small | 13px (`text-sm`) | 400 | Body | — |
-| Caption | 12px (`text-xs`) | 500 | Body | — |
-| Column header | 11–12px uppercase `tracking-wider` | 600 | Body | — |
+| Page title | `1.75rem` (`.page-title`) | 600 | Display | `-0.02em` |
+| Section title | `1.25rem` (`.section-title`) | 600 | Body | `-0.01em` |
+| Stat value | `2rem` (`.stat-value`) | 600 | Body | `-0.02em` |
+| Card title | `0.875rem` (`.card-title`) | 600 | Body | `0` |
+| Body | `14px` (root default) | 400 | Body | — |
+| Small | `0.875rem` (`text-sm`) | 400 | Body | — |
+| Caption | `0.75rem` (`text-xs`) | 400–500 | Body | — |
+| Column header | `text-[11px]`–`text-xs`, uppercase `tracking-wider` | 600 | Body | — |
 | Mono numeric | `font-mono text-xs tabular-nums` | 400 | Mono | — |
 
 Always use `tabular-nums` for numeric columns.

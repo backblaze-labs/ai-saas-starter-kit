@@ -1,0 +1,70 @@
+name: CI
+
+# Runs the same quality gates AGENTS.md §5 documents. Without this, those
+# gates only ran when a human remembered to. No secrets required: backend
+# tests mock the B2 repo layer and /health tolerates a degraded connection.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  web:
+    name: Web (lint · typecheck · build · unit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test:web
+
+      - name: Typecheck + build
+        run: pnpm build
+
+  api:
+    name: API (ruff · pytest · structure)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create venv and install dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Lint (ruff)
+        run: .venv/bin/ruff check .
+
+      - name: Tests (pytest)
+        run: .venv/bin/python -m pytest
+
+      - name: Structure boundary tests
+        run: .venv/bin/python -m pytest tests/test_structure.py -v

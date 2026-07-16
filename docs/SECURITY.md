@@ -1,11 +1,11 @@
-<!-- last_verified: 2026-04-22 -->
+<!-- last_verified: 2026-07-15 -->
 # Security
 
 Security principles and implementation for the ai-media-saas-starter.
 
 ## Trust Boundaries
 
-- **Frontend -> API**: CORS-restricted to configured origins, scoped to `GET/POST/DELETE/OPTIONS`; authenticated calls carry a Supabase bearer token
+- **Frontend -> API**: CORS-restricted to configured origins, scoped to `GET/POST/DELETE/OPTIONS`; authenticated calls carry a Supabase bearer token. `allow_credentials` is `False` — the frontend authenticates the API with that bearer token in the `Authorization` header, not a cross-origin cookie, so credentialed CORS is unnecessary. (The Supabase session cookie is held between the browser and Supabase/Next.js, never sent cross-origin to this API.)
 - **API -> B2**: Authenticated via `B2_APPLICATION_KEY_ID` + `B2_APPLICATION_KEY`, signature v4
 - **Client -> B2**: Presigned URLs for download (10-min expiry, `Content-Disposition: attachment`)
 - **Client/API -> Supabase**: browser holds a cookie session (anon/publishable key only); the API validates tokens against Supabase and never ships the service-role key to the client
@@ -37,21 +37,30 @@ Security principles and implementation for the ai-media-saas-starter.
 - Filename sanitization: path traversal, null bytes, unsafe chars stripped
 - MIME/extension consistency check against allowlist
 - Chunked streaming with size enforcement (100MB default)
-- Content-type allowlist (images, PDFs, text, archives, audio/video)
+- Content-type allowlist (images, PDFs, text, archives, audio/video). **SVG is excluded** — it can embed `<script>` that executes when served from a public bucket URL (stored XSS). Re-add only with server-side sanitization.
+- **Magic-byte signature check**: for binary types, the leading bytes must match the declared content type, so a script payload can't masquerade as `image/png`. Text-like types (plain/CSV/JSON) have no signature and skip this check.
 - Empty file rejection
+
+## Rate Limiting
+
+- Per-IP fixed-window limiter (`app/runtime/ratelimit.py`), configurable via `RATE_LIMIT_PER_MINUTE` (reads) and `RATE_LIMIT_WRITE_PER_MINUTE` (uploads/deletes/downloads). Guards against DoS and Backblaze transaction/egress cost amplification.
+- In-process, per replica. Horizontal scaling needs a shared store (e.g. Redis) — see [RELIABILITY.md](RELIABILITY.md#rate-limiting).
 
 ## File Key Validation
 
 - Empty keys rejected
 - Path traversal patterns rejected (`../`, `%2e%2e`, backslashes, null bytes)
-- The bucket is the only access boundary — add prefix scoping in
-  `services/api/app/service/files.py::validate_key` if your deployment
-  shares a bucket with other workloads
+- Optional prefix confinement: set `ALLOWED_KEY_PREFIX` (e.g. `uploads/`) to restrict key-addressed reads/deletes when the bucket is shared with other workloads. **Off (empty) by default.** Note this app writes under *two* prefixes — `uploads/` (user uploads) and `generated/` (AI-generated media) — so confining to a single prefix would exclude the other's keys; don't enable `uploads/` blindly. The by-key routes otherwise accept arbitrary folder and reserved-word keys by design.
 
 ## Download Safety
 
 - Presigned URLs force `Content-Disposition: attachment`
 - Prevents inline rendering of user-uploaded content (XSS mitigation)
+
+## Response Hardening
+
+- Baseline headers on every API response: `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`
+- Interactive API docs (`/docs`, `/redoc`, `/openapi.json`) are on by default but can be disabled with `ENABLE_DOCS=false` to hide the API surface in production
 
 ## Secrets Management
 
