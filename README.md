@@ -1,16 +1,40 @@
-<!-- last_verified: 2026-07-16 -->
 # AI SaaS Starter Kit
 
-Stop wiring boilerplate and start building. This open-source starter kit gives developers and AI coding agents a production-ready **SaaS** foundation — a full-stack TypeScript + Python template with authentication, subscription billing, an AI media-generation workflow, an admin console, and a file manager, all wired to **[Backblaze B2](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-saas-starter-kit)** cloud storage. Save thousands of tokens on setup prompts, skip the "build me auth, billing, and a dashboard from scratch" loop, and go straight to building your app's unique features.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/backblaze-labs/ai-saas-starter-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/backblaze-labs/ai-saas-starter-kit/actions/workflows/ci.yml)
+![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
+![React 19](https://img.shields.io/badge/React-19-149eca?logo=react)
+![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11+-009688?logo=fastapi)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?logo=typescript&logoColor=white)
+![Storage: Backblaze B2](https://img.shields.io/badge/storage-Backblaze%20B2-e21e29)
+
+**Production-ready Next.js + FastAPI SaaS template with Supabase auth, Stripe billing, AI image generation, and Backblaze B2 storage.**
+
+Stop wiring boilerplate and start building.
+
+**AI SaaS Starter Kit** is an open-source, production-ready template for building AI SaaS applications on a full-stack TypeScript (Next.js 16) and Python (FastAPI) monorepo. It ships authentication (Supabase), subscription billing (Stripe), an AI text-to-image workflow (NVIDIA NIM + Genblaze SDK), an admin console, and a **[Backblaze B2](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-saas-starter-kit)**–backed file manager out of the box — so developers and AI coding agents can skip weeks of auth, billing, and storage boilerplate and go straight to their app's unique features. B2 gives AI apps S3-compatible object storage at a fraction of typical cloud egress cost, so generated media and uploads stay cheap at scale. MIT-licensed.
 
 **What you get out of the box:**
 - **Authentication** — Supabase email/password + email-code (OTP) sign-in, protected routes, profiles, and an admin role
 - **Subscription billing** — Stripe Checkout + Billing Portal, Free/Pro/Team plans, webhook→database sync, and plan-gating
-- **AI media generation** — a text-to-image workflow (NVIDIA NIM `flux.1-dev`) orchestrated by the Genblaze SDK, written to B2 with a SHA-256 provenance manifest
+- **AI image generation** — a text-to-image workflow (NVIDIA NIM `flux.1-dev`) orchestrated by the Genblaze SDK, written to B2 with a SHA-256 provenance manifest
 - **Admin console** — filterable, paginated DataGrids over users, subscriptions, jobs, files, and provider runs, plus an audit log
 - **File manager** — drag-and-drop upload with progress + a browser with preview, download, and delete; uploads return rich file metadata (checksums, dimensions, EXIF) in the API response
 - **Full-stack UI** (Next.js 16 + React 19 + Tailwind v4 + shadcn/ui) on a strictly layered FastAPI backend with structural tests
 - **Agent-optimized docs** — your AI coding agent can read the repo and start contributing immediately
+
+## Contents
+
+- [What it looks like](#what-it-looks-like)
+- [Agent-First Architecture](#agent-first-architecture)
+- [Quick Start](#quick-start)
+- [Building Your App](#building-your-app)
+- [Deploy](#deploy)
+- [Core Features](#core-features)
+- [Tech Stack](#tech-stack)
+- [Commands](#commands)
+- [FAQ](#faq)
+- [Documentation Map](#documentation-map)
 
 ## What it looks like
 
@@ -30,7 +54,7 @@ The structure follows the principle that **repository knowledge is the system of
 
 ### How it works
 
-**[AGENTS.md](AGENTS.md) is the single source of truth for all coding agents.** A ~100 line entry point gives agents the repository layout, architectural invariants, commands, conventions, and pointers to deeper docs. Agent-specific files (CLAUDE.md, etc.) are thin pointers back to AGENTS.md.
+**[AGENTS.md](AGENTS.md) is the single source of truth for all coding agents.** A compact (~150-line) entry point gives agents the repository layout, architectural invariants, commands, conventions, and pointers to deeper docs. Agent-specific files (CLAUDE.md, etc.) are thin pointers back to AGENTS.md.
 
 **Architecture is enforced mechanically, not by convention.** Layering rules, import boundaries, file size limits, and SDK containment are verified by structural tests and lints that run on every change. When rules are enforceable by code, agents follow them reliably.
 
@@ -50,17 +74,7 @@ docs/
 
 ### Key design decisions
 
-| Principle | Implementation |
-|-----------|---------------|
-| Give agents a single source of truth | AGENTS.md ~100 lines — layout, invariants, commands, conventions |
-| Enforce invariants mechanically | Structural tests + ruff + ESLint verify boundaries |
-| DRY documentation | Each fact lives in one place; no redundant files to drift |
-| Strict layered architecture | `types -> config -> repo -> service -> runtime`, enforced by tests |
-| Prefer boring, composable libraries | stdlib logging over frameworks, Pydantic over ad-hoc validation |
-| Contain external SDKs | `boto3` only in `repo/` layer — verified by structural test |
-| Keep files agent-sized | 300-line limit per file, enforced by test |
-| Docs updated with code | Same-PR requirement prevents documentation rot |
-| Structured observability | JSON logging, `/metrics` endpoint, request tracing |
+Every architectural rule is enforced mechanically, not by convention: a strict layered backend (`types -> config -> repo -> service -> runtime`), external SDKs contained to the `repo/` layer, a 300-line-per-file limit, and DRY docs updated in the same PR as the code — all verified by structural tests, ruff, and ESLint on every change. The full contract lives in **[AGENTS.md](AGENTS.md)** and **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
 This approach draws from [OpenAI's experience building with Codex](https://openai.com/index/harness-engineering/): agents work best in environments with strict boundaries, predictable structure, and progressive context disclosure.
 
@@ -177,7 +191,7 @@ Billing is powered by [Stripe](https://stripe.com). The app boots fine without i
 
 New to Stripe? The [step-by-step Stripe billing setup guide](docs/stripe-setup.md) walks through all of this with zero Stripe experience assumed.
 
-**6. Set up AI media generation (optional)**
+**6. Set up AI image generation (optional)**
 
 The marquee `/generate` workflow turns a text prompt into an image via NVIDIA NIM (`flux.1-dev`), orchestrated by the [Genblaze](https://pypi.org/project/genblaze-core/) SDK and written to B2 with a SHA-256 provenance manifest. The app boots fine without it — the endpoint returns a clean `503` — so this is optional. To enable it, grab a free key with starter credits at [build.nvidia.com](https://build.nvidia.com) (it looks like `nvapi-...`) and set `NVIDIA_API_KEY` in `.env`. Generation is **Pro-gated**, so sign in on a Pro plan (a Stripe test checkout is enough) to try it. The model and image size are configurable via `NVIDIA_IMAGE_MODEL` and the `GENERATION_*` settings in `services/api/app/config/settings.py`.
 
@@ -218,20 +232,17 @@ Full production topology — Vercel + Railway/Render/Fly, hosted Supabase, Strip
 
 - [Authentication](docs/features/authentication.md) — Supabase email/password + email-code (OTP) sign-in, protected routes, profiles, and an admin role
 - [Billing](docs/features/billing.md) — Stripe Checkout + Billing Portal, Free/Pro/Team plans, webhook→Supabase sync, and plan-gating (`require_plan`)
-- [AI Media Generation](docs/features/generation.md) — text-to-image (NVIDIA NIM `flux.1-dev`) via the Genblaze SDK → B2 with a SHA-256 provenance manifest; Pro-gated, and outputs land in the file manager
+- [AI Image Generation](docs/features/generation.md) — text-to-image (NVIDIA NIM `flux.1-dev`) via the Genblaze SDK → B2 with a SHA-256 provenance manifest; Pro-gated, and outputs land in the file manager
 - [Admin Console](docs/features/admin.md) — filterable, paginated DataGrids (users, subscriptions, jobs, files, provider runs) + an audit log; admin-gated
 - [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress
 - [File Browser](docs/features/file-browser.md) — list, preview, download, delete files
 - [Dashboard](docs/features/dashboard.md) — stats cards, upload chart, recent uploads
-- [Metadata Extraction](docs/features/metadata-extraction.md) — the upload API extracts rich metadata (checksums, image dimensions, EXIF, PDF info) and returns it in the upload response; the file browser surfaces basic metadata (size, type, upload date)
+- [Upload Metadata](docs/features/metadata-extraction.md) — the upload API returns rich metadata (checksums, image dimensions, EXIF, PDF info) in its response; the file browser surfaces basic metadata (size, type, upload date)
 - [Design System](docs/design-system.md) — tokens, primitives, AI elements, the blaze generating loader, and inline `ErrorState` / `EmptyState` patterns. Live preview at `/design`.
 - Inline error handling — fetch failures surface *what's wrong* (API offline, 401, 5xx) and offer a Retry, instead of silently rendering empty state.
 - Single-source config — one `.env` at the repo root powers both API and web app, validated at startup so misconfig fails fast with a readable message.
 - Centralized data layer — every fetch goes through TanStack Query hooks in `apps/web/src/lib/queries.ts`; cache invalidation is one call after a mutation.
-- Structural tests — verify layering rules, import boundaries, SDK containment, file size limits
-- Structured JSON logging — every request traced with `request_id` and timing
-- `/health` endpoint — B2 connectivity check
-- `/metrics` endpoint — Prometheus-format counters (request count, latency, uploads)
+- Production-grade observability & guardrails — structural tests (layering rules, import boundaries, SDK containment, file-size limits), structured JSON request logging with tracing, and `/health` + `/metrics` endpoints. Details in [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/RELIABILITY.md](docs/RELIABILITY.md).
 
 ## Tech Stack
 
@@ -256,8 +267,27 @@ Full production topology — Vercel + Railway/Render/Fly, hosted Supabase, Strip
 | `pnpm lint` | Lint frontend |
 | `pnpm lint:api` | Lint backend (ruff) |
 | `pnpm test:api` | Run backend tests |
+| `pnpm test:web` | Run frontend tests (vitest) |
+| `pnpm typecheck` | Type-check the frontend |
 | `pnpm check:structure` | Verify layering rules |
 | `pnpm test:e2e` | Playwright e2e tests (run `pnpm --filter @ai-saas-starter-kit/web exec playwright install chromium` once first) |
+
+## FAQ
+
+**What is the AI SaaS Starter Kit?**
+It's an open-source, production-ready template for building AI SaaS applications on a full-stack Next.js 16 (TypeScript) + FastAPI (Python) monorepo, with Supabase authentication, Stripe subscription billing, an AI text-to-image workflow, an admin console, and a Backblaze B2–backed file manager wired in out of the box.
+
+**Do I need all four services (B2, Supabase, Stripe, NVIDIA) to run it?**
+No. Authentication, uploads, and the file manager need only **Backblaze B2 + a local Supabase stack**. Stripe billing and AI image generation are optional — their endpoints return a clean `503` until you configure them, and the rest of the app works unchanged.
+
+**Is it production-ready, and what's the license?**
+Yes — it ships with structural tests, structured logging, `/health` + `/metrics` endpoints, and a documented deploy path (Vercel + Railway/Render/Fly). It's **MIT-licensed**, so you're free to use it commercially.
+
+**Can I use a different storage provider?**
+The app talks to storage over the **S3-compatible API** (boto3), so it can point at any S3-compatible store — but it's built and tested for Backblaze B2, and the setup docs assume B2.
+
+**Why Backblaze B2 for AI apps?**
+B2 provides S3-compatible object storage at a fraction of the egress cost of the hyperscalers, so generated media, uploads, and datasets stay cheap to store *and* to serve as your app scales.
 
 ## Documentation Map
 
@@ -277,7 +307,11 @@ Full production topology — Vercel + Railway/Render/Fly, hosted Supabase, Strip
 
 ## Contributing
 
-Start with [AGENTS.md](AGENTS.md). It's the map — everything else is discoverable from there.
+Start with [AGENTS.md](AGENTS.md) — it's the map, and everything else is discoverable from there. Open an issue or PR, and run `pnpm lint && pnpm test:api && pnpm check:structure` before submitting.
+
+## Security
+
+Found a vulnerability? Please report it privately via GitHub's **"Report a vulnerability"** button on the repo's [Security tab](https://github.com/backblaze-labs/ai-saas-starter-kit/security/advisories/new) rather than opening a public issue. For the security model and hardening details, see [docs/SECURITY.md](docs/SECURITY.md).
 
 ## License
 
