@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-15 -->
+<!-- last_verified: 2026-07-16 -->
 # Setting Up Stripe Billing: Subscriptions, Checkout, and Webhook Testing
 
 > A zero-to-working guide to wiring Stripe subscription billing into the starter kit: install the Stripe CLI, create Pro/Team recurring prices, capture your webhook signing secret, fill `.env`, and test Checkout locally with card `4242 4242 4242 4242`. No prior Stripe experience assumed.
@@ -15,9 +15,9 @@ Three processes running at once:
 |----------|---------|------|
 | 1 | `supabase start` | Postgres + Auth + Studio (local) |
 | 2 | `pnpm dev` | Frontend (`:3000`) + API (`:8000`) |
-| 3 | `stripe listen --forward-to localhost:8000/billing/webhook` | Relays Stripe events to your local API |
+| 3 | `pnpm stripe:listen` | Relays Stripe events to your local API |
 
-> **The port must match.** This app runs the API on **`8000`** by default. `pnpm dev` prints a banner (`⚠ API on http://localhost:XXXX`) if `8000` was busy and it had to pick another port — if you see that, use *that* port in the `stripe listen` command instead. The `--forward-to` port must always equal the port your API is actually listening on.
+> **The port must match.** This app runs the API on **`8000`** by default, and `pnpm stripe:listen` forwards there. `pnpm dev` prints a banner (`⚠ API on http://localhost:XXXX`) if `8000` was busy and it had to pick another port — if you see that, run the raw command with *that* port instead: `stripe listen --forward-to localhost:<port>/billing/webhook`. The `--forward-to` port must always equal the port your API is actually listening on.
 
 ## Prerequisites
 
@@ -40,7 +40,18 @@ This opens your browser to authorize the CLI against your account in test mode. 
 
 ## 2. Create the Pro and Team recurring prices
 
-Stripe needs one **recurring price** per paid plan. Price IDs (`price_...`) are account-specific, so the app reads them from env config rather than storing them. Create them with the CLI:
+Stripe needs one **recurring price** per paid plan, and the app reads each plan's id from env config (`STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM`) because price ids are account-specific. One command creates both products with a **monthly** recurring price **and writes their ids into `.env` for you** — so you never copy a `price_...` id by hand:
+
+```bash
+pnpm stripe:seed
+```
+
+It reads your `STRIPE_SECRET_KEY` from `.env`, so set that first ([step 3](#3-get-your-test-mode-secret-key)) and re-run if you haven't yet. It's **idempotent** — prices are keyed by a stable `lookup_key`, so re-running reuses the existing prices instead of creating duplicates, and it never touches your `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`. Requires the Stripe CLI (see Prerequisites); the mode follows your key, so an `sk_test_...` key seeds test-mode prices.
+
+<details>
+<summary>Prefer to create them by hand?</summary>
+
+Create them with the CLI (paste each printed `prod_...` into the matching `prices create`, then copy the two `price_...` ids into `.env` yourself in step 5):
 
 ```bash
 # Pro — $19/mo
@@ -58,22 +69,22 @@ stripe prices create \
   -d "recurring[interval]=month"
 ```
 
-Each `products create` prints a `prod_...` id (paste it into the matching `prices create`), and each `prices create` prints a `price_...` id. **Save the two `price_...` ids** — they go into `.env` in step 4.
+Or click through the [Dashboard](https://dashboard.stripe.com/test/products) under **Product catalog → Add product**, with a **recurring / monthly** price. Background on the model: [Recurring pricing models](https://docs.stripe.com/products-prices/pricing-models).
 
-Prefer clicking? Create them in the [Dashboard](https://dashboard.stripe.com/test/products) under **Product catalog → Add product**, with a **recurring / monthly** price. Background on the model: [Recurring pricing models](https://docs.stripe.com/products-prices/pricing-models).
+</details>
 
 > The dollar amount is cosmetic for plan-gating — the backend maps the **price id** to a tier, not the amount. The `1900` / `4900` values simply match the plan catalog (`supabase/migrations/…_billing_plans_subscriptions.sql`).
 
 ## 3. Get your test-mode secret key
 
-In the Stripe Dashboard, confirm the **Test mode** toggle is on, then open [Developers → API keys](https://dashboard.stripe.com/test/apikeys) and copy the **Secret key** (`sk_test_...`). More on keys: [API keys](https://docs.stripe.com/keys).
+In the Stripe Dashboard, confirm the **Test mode** toggle is on, then open [Developers → API keys](https://dashboard.stripe.com/test/apikeys) and copy the **Secret key** (`sk_test_...`) into `STRIPE_SECRET_KEY` in `.env`. That's what `pnpm stripe:seed` (step 2) reads to create your prices. More on keys: [API keys](https://docs.stripe.com/keys).
 
 ## 4. Start the webhook listener and capture the signing secret
 
-In **Terminal 3**:
+In **Terminal 3** (`pnpm stripe:listen` is a shortcut for the full `stripe listen` command):
 
 ```bash
-stripe listen --forward-to localhost:8000/billing/webhook
+pnpm stripe:listen   # = stripe listen --forward-to localhost:8000/billing/webhook
 ```
 
 On startup it prints:
@@ -84,15 +95,15 @@ On startup it prints:
 
 That `whsec_...` is your `STRIPE_WEBHOOK_SECRET`. It's **stable** for your account/device, so you set it once. Leave this terminal running — it forwards `checkout.session.completed` and `customer.subscription.*` events to your API and prints each one live. Reference: [Test a webhook integration with the Stripe CLI](https://docs.stripe.com/webhooks#test-webhook).
 
-## 5. Fill in `.env`
+## 5. Confirm `.env`
 
-Add the four values you gathered to the root `.env` (see `.env.example`):
+By now the root `.env` holds all four Stripe values — **two you pasted** (`STRIPE_SECRET_KEY` in step 3, `STRIPE_WEBHOOK_SECRET` in step 4) and **two written for you** by `pnpm stripe:seed` in step 2 (see `.env.example`):
 
 ```bash
 STRIPE_SECRET_KEY=sk_test_...        # step 3
 STRIPE_WEBHOOK_SECRET=whsec_...      # step 4 (from `stripe listen`)
-STRIPE_PRICE_PRO=price_...           # step 2 (Pro)
-STRIPE_PRICE_TEAM=price_...          # step 2 (Team)
+STRIPE_PRICE_PRO=price_...           # written by `pnpm stripe:seed` (step 2)
+STRIPE_PRICE_TEAM=price_...          # written by `pnpm stripe:seed` (step 2)
 ```
 
 > **Order matters.** The API reads `.env` **only at startup**. If `pnpm dev` was already running, restart it after editing `.env` — otherwise webhook verification fails with a `400` ("Invalid signature") because the API is still running without the secret.

@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-14 -->
+<!-- last_verified: 2026-07-16 -->
 # Deployment
 
 This starter kit is two deployable services plus three managed dependencies:
@@ -139,8 +139,11 @@ the same shape — set the root directory to `services/api`, install with
 1. Switch the [Stripe Dashboard](https://dashboard.stripe.com) to **live mode** and
    copy the live `STRIPE_SECRET_KEY` (or stay in test mode for a demo deploy — the
    test card `4242 4242 4242 4242` keeps working).
-2. Create a recurring **Price** for each paid plan; paste the `price_...` IDs into
-   `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM`.
+2. Create the plan prices with **`pnpm stripe:seed`** — with a live `sk_live_...` key
+   in `STRIPE_SECRET_KEY` it creates the Pro/Team products + recurring prices in **live
+   mode** and writes `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` for you (the same one
+   command as local dev; idempotent). Prefer the Dashboard? Create a recurring Price per
+   plan by hand and paste the `price_...` IDs into those two vars.
 3. Add a **webhook endpoint** pointing at your deployed API:
    `https://<your-api-host>/billing/webhook`. Subscribe to the
    `customer.subscription.*` and `checkout.session.completed` events, then copy the

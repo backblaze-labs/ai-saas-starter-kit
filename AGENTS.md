@@ -79,6 +79,8 @@ When this repo is used as the foundation for a new app, the following pieces are
 pnpm dev               # start both frontend and backend
 pnpm dev:web           # frontend only
 pnpm dev:api           # backend only
+pnpm stripe:seed       # create Stripe products/prices + write price ids into .env
+pnpm stripe:listen     # forward Stripe webhooks to the local API
 
 # Test & Lint
 pnpm lint              # frontend lint (eslint)

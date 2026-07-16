@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-14 -->
+<!-- last_verified: 2026-07-16 -->
 # AI Media SaaS Starter
 
 Stop wiring boilerplate and start building. This open-source starter kit gives developers and AI coding agents a production-ready **SaaS** foundation — a full-stack TypeScript + Python template with authentication, subscription billing, an AI media-generation workflow, an admin console, and a file manager, all wired to **[Backblaze B2](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter)** cloud storage. Save thousands of tokens on setup prompts, skip the "build me auth, billing, and a dashboard from scratch" loop, and go straight to building your app's unique features.
@@ -94,6 +94,18 @@ Either way you get a clean project with no upstream history — ready to push to
 
 ### Setup
 
+> **TL;DR (local).** Auth, uploads, and the file manager need only **B2 + a local Supabase stack** — Stripe billing and AI generation are optional (their endpoints return a clean `503` until configured). After cloning:
+>
+> ```bash
+> pnpm install
+> cd services/api && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
+> cp .env.example .env          # then paste your B2 bucket + app key into .env (step 3)
+> supabase start && node scripts/sync-supabase-env.mjs
+> pnpm dev                      # http://localhost:3000 — the first signup becomes admin
+> ```
+>
+> The steps below expand each of these, plus the optional Stripe (step 5) and AI (step 6) setup.
+
 **1. Install dependencies**
 
 ```bash
@@ -156,9 +168,14 @@ Then copy **Project Settings → API** into `.env`: the project URL into `NEXT_P
 
 **5. Set up Stripe billing (optional)**
 
-Billing is powered by [Stripe](https://stripe.com). The app boots fine without it — the billing endpoints just return `503` and the file manager works unchanged — so you can skip this and come back later. To enable it, grab **test-mode** keys from the [Stripe Dashboard](https://dashboard.stripe.com/test/apikeys), create a recurring Price for each paid plan, and fill `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO`, and `STRIPE_PRICE_TEAM` in `.env` (see `.env.example`). Forward webhooks to your local API with the [Stripe CLI](https://stripe.com/docs/stripe-cli): `stripe listen --forward-to localhost:8000/billing/webhook`. Test with card `4242 4242 4242 4242`.
+Billing is powered by [Stripe](https://stripe.com). The app boots fine without it — the billing endpoints just return `503` and the file manager works unchanged — so you can skip this and come back later. To enable it (test mode; needs the [Stripe CLI](https://stripe.com/docs/stripe-cli)):
 
-New to Stripe? Follow the [step-by-step Stripe billing setup guide](docs/stripe-setup.md) — Stripe CLI install, creating recurring prices, and capturing your webhook signing secret, with zero Stripe experience assumed.
+1. Copy your **test-mode** secret key (`sk_test_...`) from the [Stripe Dashboard](https://dashboard.stripe.com/test/apikeys) into `STRIPE_SECRET_KEY` in `.env`.
+2. Run `pnpm stripe:seed` — it creates the Pro/Team products + recurring prices and writes `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` into `.env` for you (idempotent; no `price_...` copy-paste).
+3. Run `pnpm stripe:listen` and copy the `whsec_...` it prints into `STRIPE_WEBHOOK_SECRET`. Leave it running — it forwards webhooks to your local API.
+4. Restart `pnpm dev` (env is read at startup), then test checkout with card `4242 4242 4242 4242`.
+
+New to Stripe? The [step-by-step Stripe billing setup guide](docs/stripe-setup.md) walks through all of this with zero Stripe experience assumed.
 
 **6. Set up AI media generation (optional)**
 
@@ -233,6 +250,8 @@ Full production topology — Vercel + Railway/Render/Fly, hosted Supabase, Strip
 | `pnpm dev` | Start frontend + backend |
 | `pnpm dev:web` | Frontend only |
 | `pnpm dev:api` | Backend only |
+| `pnpm stripe:seed` | Create Stripe products/prices + write price IDs into `.env` (idempotent) |
+| `pnpm stripe:listen` | Forward Stripe webhooks to the local API |
 | `pnpm build` | Build frontend |
 | `pnpm lint` | Lint frontend |
 | `pnpm lint:api` | Lint backend (ruff) |
