@@ -38,13 +38,29 @@ Stop wiring boilerplate and start building.
 
 ## What it looks like
 
-**Dashboard** — stats, upload activity, and recent uploads at a glance:
+**Sign in** — email/password or passwordless email-code (OTP), in a polished dark UI.
 
-![Dashboard view showing stat cards, upload activity chart, and recent uploads table](docs/images/b2-starterkit-dashboard1.png)
+![Sign in screen with password and email-code tabs](docs/images/signin.png)
 
-**File browser** — tree view with preview, download, and delete:
+**Dashboard** — your plan, storage used, and AI generation activity at a glance.
 
-![File browser view showing a tree of files with hover actions](docs/images/b2-starterkit-fileview2.png)
+![Dashboard with plan, storage, generation stat cards, an upload-activity chart, and recent generations](docs/images/dashboard.png)
+
+**Generate** — describe an image and the NVIDIA NIM + Genblaze workflow renders it and saves it to Backblaze B2, where it appears here and in your files.
+
+![Generate page with a prompt form and a gallery of generated images](docs/images/generate.png)
+
+**Billing** — Stripe-backed Free / Pro / Team plans with plan-gating; the Pro plan unlocks AI generation.
+
+![Billing page showing Free, Pro, and Team plan cards with the current plan highlighted](docs/images/billing.png)
+
+**Admin console** — an overview of every user's resources across the workspace: users, subscriptions, jobs, files, provider runs, and storage.
+
+![Admin overview with stat cards for users, admins, subscriptions, jobs, files, and storage](docs/images/admin.png)
+
+**Admin DataGrids** — filterable, paginated grids over each resource, with an audit log of role changes.
+
+![Admin subscriptions DataGrid showing plan, status, renewal date, and cancellation columns](docs/images/admin-datagrids.png)
 
 ## Agent-First Architecture
 
