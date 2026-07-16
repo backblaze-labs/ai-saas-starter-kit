@@ -142,7 +142,7 @@ node scripts/sync-supabase-env.mjs   # writes the local Supabase keys into .env
 
 `supabase start` applies the migrations in `supabase/migrations/` (a `profiles` table, a `roles` catalog, and RLS). Confirmation and magic-link emails are caught by Mailpit at `http://127.0.0.1:54324` — nothing is sent to a real inbox locally. **The first user to sign up becomes an admin.**
 
-*Hosted (staging/production)* — create a project at [supabase.com](https://supabase.com), then **link the CLI before pushing** so `db push` knows which project to target (without `supabase link` first it fails with `cannot find project ref`):
+*Hosted (staging/production)* — create a project at [supabase.com](https://supabase.com), then **link the CLI before pushing** so `db push` knows which project to target:
 
 ```bash
 supabase login                                   # once per machine (opens the browser)
