@@ -13,7 +13,7 @@ import type {
   Role,
   Subscription,
   UploadStats,
-} from "@ai-media-saas-starter/shared";
+} from "@ai-saas-starter-kit/shared";
 import { createClient } from "./supabase/client";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";

@@ -1,22 +1,22 @@
 {
-  "name": "ai-media-saas-starter",
+  "name": "ai-saas-starter-kit",
   "private": true,
   "scripts": {
     "doctor": "node scripts/doctor.mjs",
     "predev": "node scripts/doctor.mjs",
     "dev": "sh scripts/dev.sh",
-    "dev:web": "pnpm --filter @ai-media-saas-starter/web dev",
+    "dev:web": "pnpm --filter @ai-saas-starter-kit/web dev",
     "dev:api": "cd services/api && .venv/bin/uvicorn main:app --reload --port ${API_PORT:-8000}",
     "stripe:seed": "node scripts/sync-stripe-env.mjs",
     "stripe:listen": "stripe listen --forward-to localhost:8000/billing/webhook",
-    "build": "pnpm --filter @ai-media-saas-starter/web build",
-    "typecheck": "pnpm --filter @ai-media-saas-starter/web typecheck",
-    "lint": "pnpm --filter @ai-media-saas-starter/web lint",
+    "build": "pnpm --filter @ai-saas-starter-kit/web build",
+    "typecheck": "pnpm --filter @ai-saas-starter-kit/web typecheck",
+    "lint": "pnpm --filter @ai-saas-starter-kit/web lint",
     "lint:api": "cd services/api && .venv/bin/ruff check .",
-    "test:web": "pnpm --filter @ai-media-saas-starter/web test",
+    "test:web": "pnpm --filter @ai-saas-starter-kit/web test",
     "test:api": "cd services/api && .venv/bin/python -m pytest",
     "check:structure": "cd services/api && .venv/bin/python -m pytest tests/test_structure.py -v",
-    "test:e2e": "pnpm --filter @ai-media-saas-starter/web exec playwright test"
+    "test:e2e": "pnpm --filter @ai-saas-starter-kit/web exec playwright test"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

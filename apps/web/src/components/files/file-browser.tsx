@@ -24,7 +24,7 @@ import { FileTreeRow } from "./file-tree-row";
 import { getDownloadUrl } from "@/lib/api-client";
 import { useDeleteFile, useFiles } from "@/lib/queries";
 import { buildFileTree, type TreeFolder } from "@/lib/file-tree";
-import type { FileMetadata } from "@ai-media-saas-starter/shared";
+import type { FileMetadata } from "@ai-saas-starter-kit/shared";
 
 export function FileBrowser() {
   const { data: files = [], isLoading, isFetching, error, refetch } = useFiles();

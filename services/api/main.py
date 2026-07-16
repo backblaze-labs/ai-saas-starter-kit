@@ -144,7 +144,7 @@ logger = logging.getLogger("api")
 # --- App setup ---
 
 app = FastAPI(
-    title="AI Media SaaS Starter API",
+    title="AI SaaS Starter Kit API",
     description="File upload and management API backed by Backblaze B2",
     version="0.1.0",
     lifespan=lifespan,

@@ -27,7 +27,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { GeneratedAsset, GenerationJob } from "@ai-media-saas-starter/shared";
+import type { GeneratedAsset, GenerationJob } from "@ai-saas-starter-kit/shared";
 
 const UNAVAILABLE_MSG =
   "Image generation is temporarily unavailable. Please try again later.";

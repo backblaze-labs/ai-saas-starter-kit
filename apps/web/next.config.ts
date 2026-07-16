@@ -15,7 +15,7 @@ loadEnvConfig(join(process.cwd(), "..", ".."), process.env.NODE_ENV !== "product
 // One wildcard covers every region + bucket, so this config drops in
 // without per-deployment tweaks.
 const nextConfig: NextConfig = {
-  transpilePackages: ["@ai-media-saas-starter/shared"],
+  transpilePackages: ["@ai-saas-starter-kit/shared"],
   images: {
     remotePatterns: [
       {

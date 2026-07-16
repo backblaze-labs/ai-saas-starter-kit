@@ -14,8 +14,8 @@ from app.config import settings
 # (Stripe is not an S3 service, so the B2 custom-user-agent standard does not
 # apply here; this is the Stripe-native equivalent.)
 stripe.set_app_info(
-    "b2ai-ai-media-saas-starter",
-    url="https://github.com/backblaze-labs/ai-media-saas-starter",
+    "b2ai-ai-saas-starter-kit",
+    url="https://github.com/backblaze-labs/ai-saas-starter-kit",
 )
 
 

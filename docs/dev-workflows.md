@@ -61,7 +61,7 @@ Engineering workflows for this repo.
 - Frontend lint: `pnpm lint`
 - Backend lint: `pnpm lint:api`
 - Full suite: `pnpm typecheck && pnpm lint && pnpm test:web && pnpm lint:api && pnpm test:api && pnpm check:structure`
-- E2E: `pnpm test:e2e` (run `pnpm --filter @ai-media-saas-starter/web exec playwright install chromium` once first)
+- E2E: `pnpm test:e2e` (run `pnpm --filter @ai-saas-starter-kit/web exec playwright install chromium` once first)
 
 ### When to run
 - After behavior change: run relevant subset

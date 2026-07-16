@@ -10,7 +10,7 @@ import type {
   GenerationJob,
   Role,
   Subscription,
-} from "@ai-media-saas-starter/shared";
+} from "@ai-saas-starter-kit/shared";
 import { StatusBadge } from "@/components/status-badge";
 import {
   Select,

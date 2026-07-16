@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { humanizeBytes } from "@/lib/utils";
-import type { FileStatus } from "@ai-media-saas-starter/shared";
+import type { FileStatus } from "@ai-saas-starter-kit/shared";
 
 export interface UploadItem {
   id: string;

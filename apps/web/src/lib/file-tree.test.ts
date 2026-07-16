@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FileMetadata } from "@ai-media-saas-starter/shared";
+import type { FileMetadata } from "@ai-saas-starter-kit/shared";
 
 import { buildFileTree, type TreeFile, type TreeFolder } from "./file-tree";
 

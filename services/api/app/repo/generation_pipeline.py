@@ -38,7 +38,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # The pipeline slug is the provenance signal stamped into every B2 manifest.
-PIPELINE_NAME = "ai-media-saas-starter"
+PIPELINE_NAME = "ai-saas-starter-kit"
 
 
 def is_configured() -> bool:

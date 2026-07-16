@@ -40,7 +40,7 @@ import type {
   Plan,
   Role,
   Subscription,
-} from "@ai-media-saas-starter/shared";
+} from "@ai-saas-starter-kit/shared";
 
 // Single source of truth for query keys. Keep these tightly scoped so that
 // invalidating "files" doesn't blow away unrelated caches, and so an IDE

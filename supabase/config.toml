@@ -2,7 +2,7 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "ai-media-saas-starter"
+project_id = "ai-saas-starter-kit"
 
 [api]
 enabled = true
@@ -240,11 +240,11 @@ otp_expiry = 3600
 # /auth/confirm route handler (SSR-friendly token_hash flow). The magic-link email
 # shows a 6-digit code so passwordless sign-in can be an in-app OTP entry.
 [auth.email.template.confirmation]
-subject = "Confirm your AI Media SaaS Starter account"
+subject = "Confirm your AI SaaS Starter Kit account"
 content_path = "./supabase/templates/confirmation.html"
 
 [auth.email.template.magic_link]
-subject = "Your AI Media SaaS Starter sign-in code"
+subject = "Your AI SaaS Starter Kit sign-in code"
 content_path = "./supabase/templates/magic_link.html"
 
 # Use a production-ready SMTP server

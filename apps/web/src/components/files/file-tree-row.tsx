@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { formatDate } from "@/lib/utils";
 import type { TreeFolder, TreeNode } from "@/lib/file-tree";
-import type { FileMetadata } from "@ai-media-saas-starter/shared";
+import type { FileMetadata } from "@ai-saas-starter-kit/shared";
 
 const MAX_VISIBLE_TREE_DEPTH = 8;
 

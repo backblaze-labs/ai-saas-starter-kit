@@ -28,7 +28,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { getFiles } from "@/lib/api-client";
-import type { FileMetadata } from "@ai-media-saas-starter/shared";
+import type { FileMetadata } from "@ai-saas-starter-kit/shared";
 
 interface CommandPaletteProps {
   open: boolean;

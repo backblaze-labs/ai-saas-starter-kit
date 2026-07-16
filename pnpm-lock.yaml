@@ -14,7 +14,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@ai-media-saas-starter/shared':
+      '@ai-saas-starter-kit/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@hookform/resolvers':

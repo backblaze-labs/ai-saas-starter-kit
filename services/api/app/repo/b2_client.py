@@ -45,7 +45,7 @@ def get_s3_client():
         aws_secret_access_key=settings.b2_application_key,
         config=Config(
             signature_version="s3v4",
-            user_agent_extra="b2ai-ai-media-saas-starter",
+            user_agent_extra="b2ai-ai-saas-starter-kit",
         ),
     )
 

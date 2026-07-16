@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePreviewUrl } from "@/lib/queries";
-import type { FileMetadata } from "@ai-media-saas-starter/shared";
+import type { FileMetadata } from "@ai-saas-starter-kit/shared";
 
 interface FilePreviewProps {
   file: FileMetadata | null;

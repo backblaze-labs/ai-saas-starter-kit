@@ -1,7 +1,7 @@
 <!-- last_verified: 2026-07-15 -->
 # Security
 
-Security principles and implementation for the ai-media-saas-starter.
+Security principles and implementation for the ai-saas-starter-kit.
 
 ## Trust Boundaries
 

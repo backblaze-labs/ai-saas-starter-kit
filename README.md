@@ -1,7 +1,7 @@
 <!-- last_verified: 2026-07-16 -->
-# AI Media SaaS Starter
+# AI SaaS Starter Kit
 
-Stop wiring boilerplate and start building. This open-source starter kit gives developers and AI coding agents a production-ready **SaaS** foundation — a full-stack TypeScript + Python template with authentication, subscription billing, an AI media-generation workflow, an admin console, and a file manager, all wired to **[Backblaze B2](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter)** cloud storage. Save thousands of tokens on setup prompts, skip the "build me auth, billing, and a dashboard from scratch" loop, and go straight to building your app's unique features.
+Stop wiring boilerplate and start building. This open-source starter kit gives developers and AI coding agents a production-ready **SaaS** foundation — a full-stack TypeScript + Python template with authentication, subscription billing, an AI media-generation workflow, an admin console, and a file manager, all wired to **[Backblaze B2](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-saas-starter-kit)** cloud storage. Save thousands of tokens on setup prompts, skip the "build me auth, billing, and a dashboard from scratch" loop, and go straight to building your app's unique features.
 
 **What you get out of the box:**
 - **Authentication** — Supabase email/password + email-code (OTP) sign-in, protected routes, profiles, and an admin role
@@ -66,7 +66,7 @@ This approach draws from [OpenAI's experience building with Codex](https://opena
 
 ## Quick Start
 
-You need: Node.js >= 20, pnpm >= 9, Python >= 3.11, and a free **[Backblaze B2 account](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter)**.
+You need: Node.js >= 20, pnpm >= 9, Python >= 3.11, and a free **[Backblaze B2 account](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-saas-starter-kit)**.
 
 ### Start a new project
 
@@ -82,12 +82,12 @@ cd my-cool-app
 **Option 2: Clone and reinitialize**
 
 ```bash
-git clone https://github.com/backblaze-labs/ai-media-saas-starter.git my-cool-app
+git clone https://github.com/backblaze-labs/ai-saas-starter-kit.git my-cool-app
 cd my-cool-app
 rm -rf .git
 git init
 git add .
-git commit -m "Initial commit from ai-media-saas-starter"
+git commit -m "Initial commit from ai-saas-starter-kit"
 ```
 
 Either way you get a clean project with no upstream history — ready to push to your own repo and point your agent at it.
@@ -129,7 +129,7 @@ Set up your local `.env`:
 cp .env.example .env
 ```
 
-Open `.env` in your editor and keep it visible. Then head to the [Backblaze B2 dashboard](https://secure.backblaze.com/b2_buckets.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter) and:
+Open `.env` in your editor and keep it visible. Then head to the [Backblaze B2 dashboard](https://secure.backblaze.com/b2_buckets.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-saas-starter-kit) and:
 
 1. **Create a bucket.** Paste each value into `.env`:
    - **Bucket Unique Name** → `B2_BUCKET_NAME`
@@ -139,7 +139,7 @@ Open `.env` in your editor and keep it visible. Then head to the [Backblaze B2 d
    - **keyID** → `B2_APPLICATION_KEY_ID`
    - **applicationKey** → `B2_APPLICATION_KEY` *(only shown once — paste it now)*
 
-> Want a walkthrough? See the docs for [creating a bucket](https://www.backblaze.com/docs/cloud-storage-create-and-manage-buckets?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter) and [creating app keys](https://www.backblaze.com/docs/cloud-storage-create-and-manage-app-keys?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-media-saas-starter).
+> Want a walkthrough? See the docs for [creating a bucket](https://www.backblaze.com/docs/cloud-storage-create-and-manage-buckets?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-saas-starter-kit) and [creating app keys](https://www.backblaze.com/docs/cloud-storage-create-and-manage-app-keys?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-ai-saas-starter-kit).
 
 **4. Set up Supabase (auth + database)**
 
@@ -208,7 +208,7 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 
 Deploy the **frontend** to Vercel in one click, then host the **backend** (FastAPI) on Railway, Render, or Fly.io:
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbackblaze-labs%2Fai-media-saas-starter&root-directory=apps%2Fweb&project-name=ai-media-saas-starter&repository-name=ai-media-saas-starter&env=NEXT_PUBLIC_API_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY&envDescription=The%20frontend%20needs%20your%20backend%20API%20origin%20plus%20your%20Supabase%20project%20URL%20and%20anon%20key&envLink=https%3A%2F%2Fgithub.com%2Fbackblaze-labs%2Fai-media-saas-starter%2Fblob%2Fmain%2Fdocs%2Fdeployment.md)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbackblaze-labs%2Fai-saas-starter-kit&root-directory=apps%2Fweb&project-name=ai-saas-starter-kit&repository-name=ai-saas-starter-kit&env=NEXT_PUBLIC_API_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY&envDescription=The%20frontend%20needs%20your%20backend%20API%20origin%20plus%20your%20Supabase%20project%20URL%20and%20anon%20key&envLink=https%3A%2F%2Fgithub.com%2Fbackblaze-labs%2Fai-saas-starter-kit%2Fblob%2Fmain%2Fdocs%2Fdeployment.md)
 
 > When importing, set the **Root Directory** to `apps/web` (this is a pnpm monorepo). Deploy the backend first so you have its URL for `NEXT_PUBLIC_API_URL`.
 
@@ -257,7 +257,7 @@ Full production topology — Vercel + Railway/Render/Fly, hosted Supabase, Strip
 | `pnpm lint:api` | Lint backend (ruff) |
 | `pnpm test:api` | Run backend tests |
 | `pnpm check:structure` | Verify layering rules |
-| `pnpm test:e2e` | Playwright e2e tests (run `pnpm --filter @ai-media-saas-starter/web exec playwright install chromium` once first) |
+| `pnpm test:e2e` | Playwright e2e tests (run `pnpm --filter @ai-saas-starter-kit/web exec playwright install chromium` once first) |
 
 ## Documentation Map
 

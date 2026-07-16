@@ -1,5 +1,5 @@
 {
-  "name": "@ai-media-saas-starter/shared",
+  "name": "@ai-saas-starter-kit/shared",
   "version": "0.1.0",
   "private": true,
   "main": "./src/types.ts",
