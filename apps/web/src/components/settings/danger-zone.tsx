@@ -1,30 +1,12 @@
 "use client";
 
 import { AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
 
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 
 export function DangerZone() {
-  const onConfirm = () => {
-    toast.success("Bucket cleared", {
-      description: "This is a demo — no files were actually deleted.",
-    });
-  };
-
   return (
     <Card className="border-destructive/40">
       <CardHeader className="border-b border-destructive/30 py-4 px-5">
@@ -42,36 +24,12 @@ export function DangerZone() {
           <div>
             <p className="text-sm font-medium">Empty this bucket</p>
             <p className="text-xs text-muted-foreground">
-              Delete every file in the B2 bucket.
+              Delete every file in the B2 bucket. Not available in this starter.
             </p>
           </div>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                Empty bucket
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Empty the bucket?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently remove all files. This is a demo — no
-                  real delete will run.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={onConfirm}
-                  // Destructive variant → white-on-red confirm that clears AA
-                  // in both themes (merged over AlertDialogAction's default).
-                  className={buttonVariants({ variant: "destructive" })}
-                >
-                  Yes, empty it
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button variant="outline" size="sm" disabled>
+            Empty bucket
+          </Button>
         </div>
       </CardContent>
     </Card>

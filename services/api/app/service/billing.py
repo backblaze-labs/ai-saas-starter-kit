@@ -60,15 +60,22 @@ async def list_plans() -> list[Plan]:
 
 def subscription_from_row(row: dict) -> Subscription:
     """Map a subscriptions PostgREST row to the API model (keeps only modelled
-    fields). Shared by the per-user read here and the admin all-subs list."""
-    return Subscription(**{k: row.get(k) for k in Subscription.model_fields})
+    fields). Shared by the per-user read here and the admin all-subs list.
+
+    `test_mode` is stamped by the service (see `get_subscription`), never read
+    from the row."""
+    fields = {k: row.get(k) for k in Subscription.model_fields if k != "test_mode"}
+    return Subscription(**fields)
 
 
 async def get_subscription(user_id: str) -> Subscription:
     row = await supabase_billing.get_subscription(user_id)
     if not row:
-        return Subscription(user_id=user_id, plan_id="free", status="inactive")
-    return subscription_from_row(row)
+        sub = Subscription(user_id=user_id, plan_id="free", status="inactive")
+    else:
+        sub = subscription_from_row(row)
+    sub.test_mode = stripe_client.is_test_mode()
+    return sub
 
 
 async def get_entitlements(user_id: str) -> Entitlements:

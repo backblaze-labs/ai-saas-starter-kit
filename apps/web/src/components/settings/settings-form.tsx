@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { toast } from "sonner";
+import { Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -63,25 +63,27 @@ const defaultValues: SettingsValues = {
 };
 
 export function SettingsForm() {
-  const [submitting, setSubmitting] = useState(false);
   const form = useForm<SettingsValues>({
     resolver: zodResolver(settingsSchema),
     defaultValues,
   });
 
-  const onSubmit = async (values: SettingsValues) => {
-    setSubmitting(true);
-    // Demo-only — wire to a real API endpoint when you add one
-    await new Promise((r) => setTimeout(r, 400));
-    setSubmitting(false);
-    toast.success("Settings saved", {
-      description: `Display name set to "${values.displayName}"`,
-    });
-  };
+  // Saving preferences isn't wired to a backend yet in this starter, so the
+  // form is a read-only preview: no fake "saved" toast, and Save is disabled.
+  const onSubmit = () => {};
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <Alert>
+          <Info />
+          <AlertTitle>Preview</AlertTitle>
+          <AlertDescription>
+            Preference saving isn&apos;t wired up in this starter yet — changes
+            here aren&apos;t saved.
+          </AlertDescription>
+        </Alert>
+
         {/* Profile */}
         <Card>
           <CardHeader className="border-b border-border py-4 px-5">
@@ -112,7 +114,7 @@ export function SettingsForm() {
                   <FormLabel>Bio</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="A short description of this workspace"
+                      placeholder="A short bio"
                       className="resize-none"
                       {...field}
                     />
@@ -256,7 +258,10 @@ export function SettingsForm() {
         <DangerZone />
 
         {/* Action bar */}
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-3">
+          <span className="text-xs text-muted-foreground">
+            Saving isn&apos;t available in this starter.
+          </span>
           <Button
             type="button"
             variant="outline"
@@ -264,8 +269,8 @@ export function SettingsForm() {
           >
             Reset
           </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting ? "Saving..." : "Save changes"}
+          <Button type="submit" disabled>
+            Save changes
           </Button>
         </div>
       </form>

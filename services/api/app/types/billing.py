@@ -38,6 +38,10 @@ class Subscription(BaseModel):
     stripe_subscription_id: str | None = None
     current_period_end: str | None = None
     cancel_at_period_end: bool = False
+    # Whether Stripe is in test mode (sk_test_ key). Stamped by the service
+    # layer, never stored — lets the UI show test-only hints without leaking
+    # them into a live deployment.
+    test_mode: bool = False
 
 
 class Entitlements(BaseModel):

@@ -279,3 +279,31 @@ async def test_checkout_route_returns_503_without_config(client, monkeypatch):
         json={"plan_id": "pro"},
     )
     assert resp.status_code == 503
+
+
+# --- test-mode flag --------------------------------------------------------
+
+
+def test_is_test_mode_detects_key_prefix(monkeypatch):
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_abc")
+    assert stripe_client.is_test_mode() is True
+
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_live_abc")
+    assert stripe_client.is_test_mode() is False
+
+    # Unconfigured Stripe must never advertise test mode.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "")
+    assert stripe_client.is_test_mode() is False
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_stamps_test_mode(monkeypatch, fake_store):
+    # Derived from the live Stripe key, not stored on the row, so it's correct
+    # even for a user who never subscribed (empty store -> synthesised Free).
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_abc")
+    sub = await billing_service.get_subscription("u-1")
+    assert sub.plan_id == "free"
+    assert sub.test_mode is True
+
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_live_abc")
+    assert (await billing_service.get_subscription("u-1")).test_mode is False

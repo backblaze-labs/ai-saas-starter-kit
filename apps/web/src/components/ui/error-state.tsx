@@ -3,7 +3,7 @@
 import { AlertTriangle, RefreshCw, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ApiError, API_BASE } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
 
 interface ErrorStateProps {
   /** The thrown error — typically an ApiError. Used to derive sensible
@@ -25,17 +25,18 @@ interface DerivedCopy {
   description: string;
 }
 
-// Map common error shapes to user-readable copy. The goal is to tell
-// the user *what's wrong* and *what to do next* — never just "an error
-// occurred." Network failures (status 0) are the most common during
-// local dev and get the most actionable hint.
+// Map common error shapes to calm, customer-facing copy. We deliberately do
+// NOT surface operator detail here (internal URLs, dev commands, backend logs,
+// B2 key permissions, or raw error text) — this primitive renders on customer
+// pages. Developers still see the underlying error in the network tab; the
+// customer gets a clear status and a retry.
 function deriveCopy(error: unknown): DerivedCopy {
   if (error instanceof ApiError) {
     if (error.status === 0) {
       return {
         icon: WifiOff,
-        title: "Can't reach the API",
-        description: `No response from ${API_BASE}. Make sure the API is running (\`pnpm dev:api\`) and reachable.`,
+        title: "Can't reach the server",
+        description: "Please check your connection and try again.",
       };
     }
     if (error.status === 401 || error.status === 403) {
@@ -43,37 +44,21 @@ function deriveCopy(error: unknown): DerivedCopy {
         icon: AlertTriangle,
         title: "Not authorized",
         description:
-          error.message ||
-          "Your B2 credentials may be missing or lack permission. Check the application key has readFiles / writeFiles / deleteFiles.",
+          "You don't have access to this, or your session expired. Try signing in again.",
       };
     }
     if (error.status === 404) {
       return {
         icon: AlertTriangle,
         title: "Not found",
-        description: error.message || "The requested resource doesn't exist.",
+        description: "We couldn't find what you're looking for.",
       };
     }
-    if (error.status >= 500) {
-      return {
-        icon: AlertTriangle,
-        title: "Backend error",
-        description:
-          error.message ||
-          "The API returned an error. Check the API logs for details.",
-      };
-    }
-    return {
-      icon: AlertTriangle,
-      title: "Request failed",
-      description: error.message || `HTTP ${error.status}`,
-    };
   }
   return {
     icon: AlertTriangle,
     title: "Something went wrong",
-    description:
-      error instanceof Error ? error.message : "An unexpected error occurred.",
+    description: "Please try again in a moment.",
   };
 }
 

@@ -62,7 +62,7 @@ export function SaasStatsCards() {
         </div>
       </StatCard>
 
-      <StatCard title="Storage Used" icon={HardDrive} loading={stats.isLoading} stagger={2}>
+      <StatCard title="Storage used" icon={HardDrive} loading={stats.isLoading} stagger={2}>
         <div className="stat-value">{stats.data?.total_size_human ?? "0 B"}</div>
       </StatCard>
 
@@ -70,7 +70,7 @@ export function SaasStatsCards() {
         <div className="stat-value">{succeeded}</div>
       </StatCard>
 
-      <StatCard title="Failed Jobs" icon={AlertTriangle} loading={jobs.isLoading} stagger={4}>
+      <StatCard title="Failed generations" icon={AlertTriangle} loading={jobs.isLoading} stagger={4}>
         <div className="stat-value">{failed}</div>
       </StatCard>
     </div>

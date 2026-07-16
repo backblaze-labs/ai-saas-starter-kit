@@ -11,6 +11,9 @@ import {
   FileIcon,
   Moon,
   Sun,
+  Wand2,
+  CreditCard,
+  UserRound,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -34,8 +37,11 @@ interface CommandPaletteProps {
 
 const routes = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Generate", href: "/generate", icon: Wand2 },
+  { label: "Billing", href: "/billing", icon: CreditCard },
   { label: "Upload", href: "/upload", icon: Upload },
   { label: "Files", href: "/files", icon: FolderOpen },
+  { label: "Account", href: "/account", icon: UserRound },
   { label: "Settings", href: "/settings", icon: Settings },
   { label: "Design System", href: "/design", icon: Sparkles },
 ];
@@ -58,7 +64,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="Search files or jump to a page..." />
+      <CommandInput placeholder="Search files or jump to a page…" />
       <CommandList>
         <CommandEmpty>No matches found.</CommandEmpty>
         <CommandGroup heading="Navigate">

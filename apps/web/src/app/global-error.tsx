@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 /**
  * Global error boundary — catches errors in root layout itself.
  * Must render its own <html>/<body> since the root layout may have failed.
@@ -11,6 +13,10 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    console.error("Global error:", error);
+  }, [error]);
+
   return (
     <html lang="en">
       <body
@@ -31,7 +37,7 @@ export default function GlobalError({
             Something went wrong
           </h1>
           <p style={{ color: "#a1a1aa", marginBottom: "1.5rem" }}>
-            {error.message || "An unexpected error occurred."}
+            An unexpected error occurred. Please try again.
           </p>
           <button
             onClick={reset}

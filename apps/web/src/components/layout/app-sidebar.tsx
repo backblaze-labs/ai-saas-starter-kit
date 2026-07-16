@@ -101,7 +101,7 @@ function NavGroup({
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { user, profile, isAdmin, signOut } = useAuth();
+  const { user, isAdmin, signOut } = useAuth();
 
   // Admin is only shown to admins. The route + every /admin API is also gated
   // server-side, so hiding the link is a convenience, not the security boundary.
@@ -146,9 +146,9 @@ export function AppSidebar() {
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="truncate text-xs font-medium">{user.email}</p>
-              {profile?.role && (
+              {isAdmin && (
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  {profile.role}
+                  Admin
                 </p>
               )}
             </div>

@@ -73,7 +73,7 @@ export function UploadChart() {
   return (
     <Card>
       <CardHeader className="border-b border-border py-4 px-5">
-        <CardTitle className="card-title">Upload Activity</CardTitle>
+        <CardTitle className="card-title">Upload activity</CardTitle>
         <CardDescription className="text-xs">Last 7 days</CardDescription>
         <CardAction className="text-right self-center">
           {isLoading ? (

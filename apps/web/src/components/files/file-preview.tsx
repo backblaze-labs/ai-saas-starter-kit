@@ -58,7 +58,7 @@ export function FilePreview({ file, open, onOpenChange }: FilePreviewProps) {
   // Fetch a presigned preview URL only while the dialog is open. Falls
   // back to the file's stored URL if the API call fails (e.g. the
   // `/preview` endpoint is unreachable but we still have a static URL).
-  const { data, isLoading, isError, error } = usePreviewUrl(
+  const { data, isLoading, isError } = usePreviewUrl(
     file?.key,
     open && !!file,
   );
@@ -68,10 +68,7 @@ export function FilePreview({ file, open, onOpenChange }: FilePreviewProps) {
 
   const isImage = file.content_type.startsWith("image/");
   const isPdf = file.content_type === "application/pdf";
-  const previewError =
-    isError && error instanceof Error
-      ? error.message
-      : "The preview link could not be created.";
+  const previewError = "The preview link could not be created.";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -90,7 +87,7 @@ export function FilePreview({ file, open, onOpenChange }: FilePreviewProps) {
                 aria-live="polite"
                 aria-label="Loading file preview"
               >
-                <p className="sr-only">Loading file preview...</p>
+                <p className="sr-only">Loading file preview…</p>
                 <Skeleton className="h-[min(55svh,400px)] min-h-[220px] w-full" />
               </div>
             ) : isImage && previewUrl ? (

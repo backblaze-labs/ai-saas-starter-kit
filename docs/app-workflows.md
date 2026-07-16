@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-03-10 -->
+<!-- last_verified: 2026-07-16 -->
 # App Workflows
 
 User journeys inside the application.
@@ -10,7 +10,7 @@ User journeys inside the application.
 - User clicks the link → `/auth/confirm` verifies it and establishes the session → lands in the app
 - Returning user signs in at `/signin` with password **or** an emailed 6-digit code
 - Unauthenticated visits to any protected route redirect to `/signin?next=<path>`
-- `/account` shows the profile (editable name), role badge, an "API session" check, and Sign out
+- `/account` shows the profile (editable name), an admin-only Admin badge, a Connection check, and Sign out
 - The first user to sign up is an admin
 - See: [Authentication](features/authentication.md)
 
@@ -52,9 +52,9 @@ User journeys inside the application.
 ## View Dashboard
 
 - User navigates to `/` (home)
-- Three parallel API calls load: stats, recent files, upload activity
-- Stats cards show: total files, storage used, uploads today, total downloads
-- Upload chart shows last 7 days of upload activity as bar chart
-- Recent uploads table shows last 10 files with filename, size, type, date
-- Empty state: "No files uploaded yet" messages
+- Parallel API calls load: subscription, file stats, generation jobs, upload activity
+- KPI cards show: plan + status, storage used, successful generations, failed generations
+- Upload chart shows last 7 days of upload activity as a bar chart
+- Recent generations table shows the latest generation jobs
+- Empty states guide the user to generate or upload
 - See: [Dashboard](features/dashboard.md)

@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-15 -->
+<!-- last_verified: 2026-07-16 -->
 # Tech Debt Tracker
 
 Known tech debt items. Agents update this when they discover or create tech debt.
@@ -16,6 +16,7 @@ Known tech debt items. Agents update this when they discover or create tech debt
 | `api-client.ts` hand-synced to FastAPI | Endpoint drift between client and server | Note an OpenAPI codegen strategy or link the spec | Low |
 | No dedicated connection-status banner | Offline only surfaced reactively per failed query | Add a global connectivity banner (route + global error boundaries already exist) | Low |
 | Rich file metadata not surfaced in the browser | Extracted at upload and returned in the `POST /upload` response but not persisted, so `GET /files-by-key/metadata` and the browser preview show basic metadata (size, type, key, date) only | Persist rich metadata at upload (e.g. in the `files` table) + return it from `GET /files-by-key/metadata`, then render it in the preview dialog | Low |
+| Settings page is a non-persisting preview & Danger Zone "Empty bucket" is disabled | Users can't save preferences or empty the bucket from the UI — both are marked "preview"/"not available in this starter" (no misleading fake-success) rather than wired | Persist preferences (a `settings` table or `profiles` columns) + implement a prefix-scoped bucket-empty behind a typed confirm | Low |
 
 ## Resolved
 

@@ -32,6 +32,15 @@ def is_configured() -> bool:
     return bool(settings.stripe_secret_key)
 
 
+def is_test_mode() -> bool:
+    """True when the configured secret key is a Stripe test-mode key.
+
+    Lets the UI show test-only hints (e.g. the 4242 test card) without leaking
+    them into a live deployment. False when Stripe isn't configured.
+    """
+    return settings.stripe_secret_key.startswith("sk_test_")
+
+
 def _api_key() -> str:
     if not settings.stripe_secret_key:
         raise StripeConfigError("STRIPE_SECRET_KEY is not configured")

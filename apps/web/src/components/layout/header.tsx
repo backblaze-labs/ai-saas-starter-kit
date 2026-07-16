@@ -107,7 +107,7 @@ export function Header() {
         className="ml-4 hidden md:flex items-center gap-2 h-8 flex-1 max-w-md px-3 rounded-md bg-white/10 border border-white/15 text-nav-foreground/70 text-sm hover:bg-white/15 hover:text-nav-foreground transition-colors"
       >
         <Search className="h-3.5 w-3.5" />
-        <span className="text-xs">Search files or jump to...</span>
+        <span className="text-xs">Search files or jump to a page…</span>
         <kbd className="ml-auto text-[10px] font-mono border border-white/20 rounded px-1 py-0.5 text-nav-foreground/60">
           ⌘K
         </kbd>

@@ -21,7 +21,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { FilePreview } from "./file-preview";
 import { FileTreeRow } from "./file-tree-row";
-import { ApiError, getDownloadUrl } from "@/lib/api-client";
+import { getDownloadUrl } from "@/lib/api-client";
 import { useDeleteFile, useFiles } from "@/lib/queries";
 import { buildFileTree, type TreeFolder } from "@/lib/file-tree";
 import type { FileMetadata } from "@ai-media-saas-starter/shared";
@@ -69,9 +69,8 @@ export function FileBrowser() {
     try {
       const { url } = await getDownloadUrl(file.key);
       window.open(url, "_blank");
-    } catch (err) {
-      const detail = err instanceof ApiError ? err.message : "Failed to get download URL";
-      toast.error(detail);
+    } catch {
+      toast.error("Couldn't get the download link. Please try again.");
     }
   };
 
@@ -82,9 +81,8 @@ export function FileBrowser() {
       onSuccess: () => {
         toast.success(`${target.filename} deleted`);
       },
-      onError: (err) => {
-        const detail = err instanceof ApiError ? err.message : "Failed to delete file";
-        toast.error(detail);
+      onError: () => {
+        toast.error("Couldn't delete the file. Please try again.");
       },
       onSettled: () => setDeleteTarget(null),
     });
@@ -99,7 +97,7 @@ export function FileBrowser() {
     <>
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4 space-y-0">
-          <CardTitle className="card-title">All Files</CardTitle>
+          <CardTitle className="card-title">All files</CardTitle>
           <Button
             variant="outline"
             size="sm"
@@ -123,7 +121,7 @@ export function FileBrowser() {
               aria-live="polite"
               aria-label="Loading files"
             >
-              <p className="sr-only">Loading files...</p>
+              <p className="sr-only">Loading files…</p>
               {Array.from({ length: 6 }).map((_, i) => (
                 <Skeleton key={i} className="h-8 w-full" />
               ))}
@@ -199,7 +197,7 @@ export function FileBrowser() {
               // default variant.
               className={buttonVariants({ variant: "destructive" })}
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

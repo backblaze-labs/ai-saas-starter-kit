@@ -81,6 +81,8 @@ export interface Subscription {
   stripe_subscription_id: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
+  /** Stripe is in test mode (sk_test_ key) — gates test-only UI hints. */
+  test_mode: boolean;
 }
 
 export interface Entitlements {

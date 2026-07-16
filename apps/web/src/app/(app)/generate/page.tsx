@@ -29,13 +29,13 @@ import {
 } from "@/components/ui/card";
 import type { GeneratedAsset, GenerationJob } from "@ai-media-saas-starter/shared";
 
-const NOT_CONFIGURED_MSG =
-  "Generation isn't configured yet — add your NVIDIA_API_KEY to .env.";
+const UNAVAILABLE_MSG =
+  "Image generation is temporarily unavailable. Please try again later.";
 
 function generateErrorToast(err: ApiError) {
-  if (err.status === 503) toast.error(NOT_CONFIGURED_MSG);
+  if (err.status === 503) toast.error(UNAVAILABLE_MSG);
   else if (err.status === 402) toast.error("Upgrade to Pro to generate media.");
-  else toast.error(err.message);
+  else toast.error("Something went wrong. Please try again.");
 }
 
 // One generated image, fetched via a short-lived presigned preview URL by its
@@ -72,9 +72,8 @@ function LockedCard() {
           <CardTitle>AI media generation is a Pro feature</CardTitle>
         </div>
         <CardDescription>
-          Text-to-image generation is gated behind a paid plan — the same{" "}
-          <code className="text-xs">require_plan(&quot;pro&quot;)</code> gate the
-          backend enforces. Upgrade to unlock it.
+          AI media generation is available on the Pro and Team plans. Upgrade to
+          unlock it.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -151,9 +150,8 @@ export default function GeneratePage() {
           Generate
         </h1>
         <p className="mt-1.5 max-w-prose text-sm text-muted-foreground text-pretty">
-          Describe an image; NVIDIA NIM (flux.1-dev) generates it and writes
-          it — with a SHA-256 provenance manifest — to your Backblaze B2 bucket.
-          It appears here and in the file manager.
+          Describe an image and we&apos;ll generate it and save it to your
+          Backblaze B2 storage. It appears here and in your files.
         </p>
       </header>
 
@@ -213,7 +211,7 @@ export default function GeneratePage() {
             >
               <GeneratingLoader size="lg" variant="stars" />
               <p className="text-sm text-muted-foreground">
-                Calling NVIDIA NIM and uploading to B2…
+                Generating your image…
               </p>
             </div>
           )}

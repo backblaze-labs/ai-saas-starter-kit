@@ -24,11 +24,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-const NOT_CONFIGURED_MSG =
-  "Billing isn't configured yet — add your Stripe keys to .env.";
+const UNAVAILABLE_MSG =
+  "Billing is temporarily unavailable. Please try again later.";
 
 function billingErrorToast(err: ApiError) {
-  toast.error(err.status === 503 ? NOT_CONFIGURED_MSG : err.message);
+  toast.error(
+    err.status === 503 ? UNAVAILABLE_MSG : "Something went wrong. Please try again.",
+  );
 }
 
 function priceLabel(cents: number, interval: string): string {
@@ -75,12 +77,21 @@ export default function BillingPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Billing</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage your subscription. Test mode uses card{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">4242 4242 4242 4242</code>.
+      <div className="animate-fade-in flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
+        <div className="min-w-0">
+          <h1 className="page-title">Billing</h1>
+          <p className="mt-1.5 max-w-prose text-sm text-muted-foreground">
+            Manage your subscription.
+            {subscription.data?.test_mode && (
+              <>
+                {" "}
+                Test mode uses card{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                  4242 4242 4242 4242
+                </code>
+                .
+              </>
+            )}
           </p>
         </div>
         {hasCustomer && (
@@ -169,21 +180,24 @@ export default function BillingPage() {
             <CardTitle>Pro feature preview</CardTitle>
           </div>
           <CardDescription>
-            The generation workflow is gated behind a paid plan. This card checks
-            the same <code className="text-xs">require_plan(&quot;pro&quot;)</code> gate the
-            backend enforces.
+            AI media generation is available on the Pro and Team plans.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {proPreview.isPending ? (
             <p className="text-sm text-muted-foreground">Checking your plan…</p>
           ) : proPreview.isSuccess ? (
-            <p className="text-sm" data-testid="pro-preview-unlocked">
-              ✅ {proPreview.data.message}
+            <p className="flex items-center gap-2 text-sm" data-testid="pro-preview-unlocked">
+              <Check className="h-4 w-4 shrink-0 text-primary" />
+              {proPreview.data.message}
             </p>
           ) : (
-            <p className="text-sm text-muted-foreground" data-testid="pro-preview-locked">
-              🔒 Locked — upgrade to Pro or Team to unlock AI media generation.
+            <p
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+              data-testid="pro-preview-locked"
+            >
+              <Lock className="h-4 w-4 shrink-0" />
+              Locked — upgrade to Pro or Team to unlock AI media generation.
             </p>
           )}
         </CardContent>

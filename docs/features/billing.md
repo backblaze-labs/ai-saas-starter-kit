@@ -51,7 +51,9 @@ reusable plan-gating dependency that locks features behind a tier.
 
 ## Edge Cases
 - Missing `STRIPE_SECRET_KEY` → checkout/portal return `503` (app still boots and
-  the file manager works); the UI shows "Billing isn't configured yet".
+  the file manager works); the UI shows "Billing is temporarily unavailable".
+- `test_mode` on the subscription payload (derived from an `sk_test_` key) gates
+  the `4242…` test-card hint on the Billing page, so it never shows in live mode.
 - Bad/absent webhook signature → `400`; missing `STRIPE_WEBHOOK_SECRET` → `503`.
 - Duplicate event id → no-op (`{"status":"duplicate"}`).
 - Unknown/unpriced plan on checkout → `400`.

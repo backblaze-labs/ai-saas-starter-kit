@@ -121,9 +121,8 @@ export function UploadForm() {
               `${formatToastFileName(item.file.name)} uploaded successfully`
             );
             anySuccess = true;
-          } catch (err) {
-            const message =
-              err instanceof Error ? err.message : "Upload failed";
+          } catch {
+            const message = "Upload failed. Please try again.";
             setItems((prev) =>
               prev.map((i) =>
                 i.id === item.id
@@ -132,7 +131,7 @@ export function UploadForm() {
               )
             );
             const toastName = formatToastFileName(item.file.name);
-            toast.error(`Failed to upload ${toastName}: ${message}`);
+            toast.error(`Couldn't upload ${toastName}. Please try again.`);
           }
         }
       } finally {
@@ -203,7 +202,7 @@ export function UploadForm() {
   return (
     <Card>
       <CardHeader className="border-b border-border py-4 px-5">
-        <CardTitle className="card-title">Upload Files</CardTitle>
+        <CardTitle className="card-title">Upload files</CardTitle>
       </CardHeader>
       <CardContent className="p-5 space-y-4">
         <Dropzone

@@ -25,7 +25,7 @@ export default function Error({
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            {error.message || "An unexpected error occurred."}
+            An unexpected error occurred. Please try again.
           </p>
           <Button onClick={reset} variant="outline">
             Try again

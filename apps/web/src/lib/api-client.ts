@@ -67,17 +67,15 @@ export class ApiError extends Error {
  * that shipped without `Access-Control-Allow-Origin`. We can't tell those apart
  * from the error object, but `navigator.onLine === false` reliably means the
  * device has no connectivity. Anything else reached the network, so the most
- * likely cause is the server erroring with a CORS-blocked response — point the
- * developer at the API logs instead of blaming their connection.
+ * likely cause is the server erroring with a CORS-blocked response. Either way
+ * the customer just needs to retry, so keep the copy generic — developers see
+ * the real failure in the browser network tab / API logs.
  */
 function networkError(): ApiError {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     return new ApiError("You appear to be offline — check your connection", 0);
   }
-  return new ApiError(
-    "Couldn't reach the API, or the server returned an error the browser blocked (CORS). Check the API logs.",
-    0,
-  );
+  return new ApiError("Couldn't reach the server. Please try again.", 0);
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

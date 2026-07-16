@@ -61,7 +61,7 @@ signed-in user, and introduce the first real database (profiles + roles).
 
 ## UX States
 - Empty: sign-in / sign-up forms.
-- Loading: "Signing in…", "Creating account…", "Checking…" (API session card).
+- Loading: "Signing in…", "Creating account…", "Checking…" (Connection card).
 - Error: inline `role="alert"` messages from Supabase; account API card degrades gracefully.
 
 ## Verification

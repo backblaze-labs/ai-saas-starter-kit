@@ -12,7 +12,7 @@ status, storage used, AI generations produced, failed jobs, and recent activity.
 
 ## Core Functions
 - `apps/web/src/components/dashboard/saas-stats-cards.tsx` — 4 KPI cards (plan,
-  storage, generations, failed jobs), composed from existing query hooks
+  storage, generations, failed generations), composed from existing query hooks
 - `apps/web/src/components/dashboard/recent-generations-table.tsx` — last ~6 jobs
 - `apps/web/src/components/dashboard/upload-chart.tsx` — storage activity chart
 - `apps/web/src/components/status-badge.tsx` — shared status pill (job/sub/run)
@@ -36,8 +36,8 @@ status, storage used, AI generations produced, failed jobs, and recent activity.
 ## Flow
 - Page loads → parallel query hooks (subscription, file stats, generation jobs,
   upload activity).
-- KPI cards render plan + status badge, storage used, count of succeeded jobs,
-  count of failed jobs.
+- KPI cards render plan + status badge, storage used, count of successful generations,
+  count of failed generations.
 - Recent-generations table shows the newest ~6 jobs with prompt, status badge,
   and created date; links to `/generate`.
 - Storage activity chart renders server-aggregated daily counts.

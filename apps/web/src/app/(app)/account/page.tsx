@@ -48,9 +48,11 @@ export default function AccountPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
-        <p className="text-sm text-muted-foreground">Manage your profile and session.</p>
+      <div className="animate-fade-in border-b border-border pb-5">
+        <h1 className="page-title">Account</h1>
+        <p className="mt-1.5 max-w-prose text-sm text-muted-foreground">
+          Manage your profile and session.
+        </p>
       </div>
 
       <Card>
@@ -60,7 +62,7 @@ export default function AccountPage() {
               <CardTitle>Profile</CardTitle>
               <CardDescription>{user?.email}</CardDescription>
             </div>
-            <Badge variant={isAdmin ? "default" : "secondary"}>{profile?.role ?? "user"}</Badge>
+            {isAdmin && <Badge>Admin</Badge>}
           </div>
         </CardHeader>
         <form onSubmit={saveProfile}>
@@ -90,23 +92,20 @@ export default function AccountPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>API session</CardTitle>
-          <CardDescription>
-            Confirms the FastAPI backend accepts your Supabase access token.
-          </CardDescription>
+          <CardTitle>Connection</CardTitle>
+          <CardDescription>Your account connection status.</CardDescription>
         </CardHeader>
         <CardContent>
           {me.isPending ? (
             <p className="text-sm text-muted-foreground">Checking…</p>
           ) : me.isError ? (
             <p className="text-sm text-muted-foreground">
-              Backend did not validate the session (is the API running?).
+              We couldn&apos;t verify your session right now.
             </p>
           ) : (
             <p className="text-sm">
-              Authenticated to the API as{" "}
-              <span className="font-medium">{me.data?.email}</span> (role{" "}
-              <span className="font-medium">{me.data?.role}</span>).
+              Signed in as{" "}
+              <span className="font-medium">{me.data?.email}</span>.
             </p>
           )}
         </CardContent>
