@@ -142,7 +142,15 @@ node scripts/sync-supabase-env.mjs   # writes the local Supabase keys into .env
 
 `supabase start` applies the migrations in `supabase/migrations/` (a `profiles` table, a `roles` catalog, and RLS). Confirmation and magic-link emails are caught by Mailpit at `http://127.0.0.1:54324` — nothing is sent to a real inbox locally. **The first user to sign up becomes an admin.**
 
-*Hosted (staging/production)* — create a project at [supabase.com](https://supabase.com), apply the migrations with `supabase db push`, then copy the values from **Project Settings → API** into `.env`: the project URL into `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_URL`, the anon/publishable key into `NEXT_PUBLIC_SUPABASE_ANON_KEY` + `SUPABASE_ANON_KEY`, and the service-role key into `SUPABASE_SERVICE_ROLE_KEY` (**server-only — never expose it to the browser**). Swapping local ↔ hosted is config-only.
+*Hosted (staging/production)* — create a project at [supabase.com](https://supabase.com), then **link the CLI before pushing** so `db push` knows which project to target (without `supabase link` first it fails with `cannot find project ref`):
+
+```bash
+supabase login                                   # once per machine (opens the browser)
+supabase link --project-ref <your-project-ref>   # ref = your project URL subdomain, or Settings → General
+supabase db push                                 # applies the 4 migrations to the hosted DB
+```
+
+Then copy **Project Settings → API** into `.env`: the project URL into `NEXT_PUBLIC_SUPABASE_URL`, the anon/publishable key into `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and the service-role key into `SUPABASE_SERVICE_ROLE_KEY` (**server-only — never expose it to the browser**). The backend reads the URL + anon key from the same `NEXT_PUBLIC_*` pair, so there is nothing to duplicate. Full walkthrough in [docs/deployment.md](docs/deployment.md). Swapping local ↔ hosted is config-only.
 
 > ⚠️ **Hosted admin:** the first user to sign up is auto-promoted to admin (handy locally). On a public hosted deploy, sign up yourself first, or remove the auto-promote branch in the migration and grant admin manually. See [docs/SECURITY.md](docs/SECURITY.md).
 

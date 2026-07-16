@@ -57,14 +57,17 @@ PLACEHOLDER_VALUES = frozenset({
     "your_region",
 })
 
-# Supabase powers auth; the URL + anon key validate sessions. The service-role
+# Supabase powers auth; the URL + anon key validate sessions. The backend reads
+# both from the NEXT_PUBLIC_* vars the frontend already needs (settings.py falls
+# back to them), so they are the names surfaced here — a plain SUPABASE_URL/
+# SUPABASE_ANON_KEY override, if set, satisfies the same check. The service-role
 # key is required too: the billing slice reads/writes plans + subscriptions with
 # it on every billing request (webhook sync bypasses RLS, and plan-gating reads
 # run without the caller's token). `supabase start` prints it and
 # `scripts/sync-supabase-env.mjs` writes it into .env.
 REQUIRED_SUPABASE_SETTINGS = (
-    ("supabase_url", "SUPABASE_URL"),
-    ("supabase_anon_key", "SUPABASE_ANON_KEY"),
+    ("supabase_url", "NEXT_PUBLIC_SUPABASE_URL"),
+    ("supabase_anon_key", "NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     ("supabase_service_role_key", "SUPABASE_SERVICE_ROLE_KEY"),
 )
 

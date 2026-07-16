@@ -73,8 +73,8 @@ the same shape — set the root directory to `services/api`, install with
 | `B2_BUCKET_NAME` | ✅ | Bucket unique name |
 | `B2_REGION` | ✅ | e.g. `us-west-004` — the S3 endpoint is derived from it |
 | `B2_PUBLIC_URL_BASE` | — | Optional; unset → presigned URLs (works with a private bucket) |
-| `SUPABASE_URL` | ✅ | Same project as the frontend |
-| `SUPABASE_ANON_KEY` | ✅ | Anon/publishable key |
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase project URL — same name the frontend uses; the backend falls back to it |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Anon/publishable key — same name as the frontend |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | **Server-only.** Required at boot (billing + plan-gating writes bypass RLS) |
 | `NVIDIA_API_KEY` | — | Required only to run `/generate` (503 without it) |
 | `STRIPE_SECRET_KEY` | — | Required only for billing (503 without it) |
@@ -85,6 +85,11 @@ the same shape — set the root directory to `services/api`, install with
 | `BILLING_CANCEL_URL` | — | e.g. `https://your-app.vercel.app/billing?checkout=cancelled` |
 | `BILLING_PORTAL_RETURN_URL` | — | e.g. `https://your-app.vercel.app/billing` |
 
+> The backend reads the Supabase URL + anon key from the `NEXT_PUBLIC_*` names above —
+> one source of truth shared with the frontend, nothing to duplicate. If you'd rather not
+> carry `NEXT_PUBLIC_*` names on this host, set `SUPABASE_URL` / `SUPABASE_ANON_KEY`
+> instead; they override the fallback.
+
 > **Two production gotchas that pass locally and fail in prod:**
 > 1. `API_CORS_ORIGINS` defaults to `localhost` — the browser will get CORS errors
 >    against the deployed frontend until you add your Vercel URL here.
@@ -94,19 +99,26 @@ the same shape — set the root directory to `services/api`, install with
 ## 3. Supabase (hosted)
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Apply the migrations from `supabase/migrations/`:
+2. Link the CLI to that project, then apply the migrations from `supabase/migrations/`.
+   Linking is what tells `db push` which project to target — without it you get
+   `cannot find project ref`:
    ```bash
-   supabase link --project-ref <your-project-ref>
+   supabase login                                  # once per machine (opens the browser)
+   supabase link --project-ref <your-project-ref>  # ref = your project URL subdomain
    supabase db push
    ```
    This creates every table (profiles, roles, plans, subscriptions, stripe_events,
    files, generation_jobs, provider_runs, usage_events, admin_audit_events), all
    RLS policies, and the explicit table grants — the app is production-ready after
-   `db push`.
-3. Copy **Project Settings → API** into your env:
-   - Project URL → `NEXT_PUBLIC_SUPABASE_URL` (Vercel) **and** `SUPABASE_URL` (backend)
-   - anon/publishable key → `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Vercel) **and** `SUPABASE_ANON_KEY` (backend)
+   `db push`. (Recent Supabase CLIs mint a temporary login role from your `supabase
+   login` session, so `link`/`db push` no longer prompt for the database password.)
+3. Copy **Project Settings → API** into your env — the same three names on both hosts:
+   - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
+   - anon/publishable key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - service-role key → `SUPABASE_SERVICE_ROLE_KEY` (backend only — **never** the frontend)
+
+   The backend reads the URL + anon key from the `NEXT_PUBLIC_*` pair, so there is
+   nothing to duplicate into separate `SUPABASE_URL` / `SUPABASE_ANON_KEY` vars.
 
 > ⚠️ **Admin bootstrap:** the first user to sign up is auto-promoted to admin
 > (convenient locally, risky on a public URL). Sign up yourself first before

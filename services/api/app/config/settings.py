@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -11,11 +12,25 @@ class Settings(BaseSettings):
 
     # Supabase (auth + Postgres). Identical shape for local (`supabase start`)
     # and hosted projects — only the URL/keys differ, so swapping environments is
-    # config-only. The service-role key is server-only and must never reach the
-    # browser; the billing slice uses it for every plans/subscriptions read/write,
-    # so it is required at startup (see main.py).
-    supabase_url: str = ""
-    supabase_anon_key: str = ""
+    # config-only.
+    #
+    # Single source of truth: the URL + anon key are read from the SAME
+    # NEXT_PUBLIC_* vars the frontend already needs, so each value lives in ONE
+    # place in .env — no duplicate SUPABASE_URL/SUPABASE_ANON_KEY to keep in sync.
+    # The plain SUPABASE_* names still win when set (first alias listed), which is
+    # the escape hatch for a split deploy where the backend host would rather not
+    # carry NEXT_PUBLIC_* names. Neither key is a secret (the anon key is designed
+    # to be public), so the backend reading the "public" names is safe.
+    supabase_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"),
+    )
+    supabase_anon_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    )
+    # Server-only; must never reach the browser. The billing slice uses it for
+    # every plans/subscriptions read/write, so it is required at startup (main.py).
     supabase_service_role_key: str = ""
 
     # Stripe billing. All optional to boot: billing endpoints return a clean 503

@@ -42,14 +42,14 @@ const PLACEHOLDERS = new Set([
   "your_region",
 ]);
 
-// Required Supabase vars. The frontend needs the NEXT_PUBLIC_* pair; the backend
-// needs the SUPABASE_* pair (mirrors services/api/main.py REQUIRED_SUPABASE_SETTINGS).
+// Required Supabase vars. The URL + anon key live in ONE place: the NEXT_PUBLIC_*
+// pair the frontend needs. The backend falls back to them (see settings.py), so
+// the legacy SUPABASE_URL/SUPABASE_ANON_KEY are an optional split-deploy override,
+// not required here. Mirrors services/api/main.py REQUIRED_SUPABASE_SETTINGS.
 // SUPABASE_SERVICE_ROLE_KEY is optional until the admin slice, so it is not required.
 const REQUIRED_SUPABASE_VARS = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  "SUPABASE_URL",
-  "SUPABASE_ANON_KEY",
 ];
 const SUPABASE_PLACEHOLDERS = new Set([
   "your_supabase_anon_key",
