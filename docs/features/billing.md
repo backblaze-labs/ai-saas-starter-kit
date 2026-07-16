@@ -77,6 +77,7 @@ reusable plan-gating dependency that locks features behind a tier.
   running stack.
 
 ## Related Docs
+- [docs/stripe-setup.md](../stripe-setup.md) — step-by-step setup + local testing walkthrough
 - [README.md](../../README.md)
 - [ARCHITECTURE.md](../../ARCHITECTURE.md)
 - [docs/SECURITY.md](../SECURITY.md)

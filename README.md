@@ -150,6 +150,8 @@ node scripts/sync-supabase-env.mjs   # writes the local Supabase keys into .env
 
 Billing is powered by [Stripe](https://stripe.com). The app boots fine without it — the billing endpoints just return `503` and the file manager works unchanged — so you can skip this and come back later. To enable it, grab **test-mode** keys from the [Stripe Dashboard](https://dashboard.stripe.com/test/apikeys), create a recurring Price for each paid plan, and fill `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO`, and `STRIPE_PRICE_TEAM` in `.env` (see `.env.example`). Forward webhooks to your local API with the [Stripe CLI](https://stripe.com/docs/stripe-cli): `stripe listen --forward-to localhost:8000/billing/webhook`. Test with card `4242 4242 4242 4242`.
 
+New to Stripe? Follow the [step-by-step Stripe billing setup guide](docs/stripe-setup.md) — Stripe CLI install, creating recurring prices, and capturing your webhook signing secret, with zero Stripe experience assumed.
+
 **6. Set up AI media generation (optional)**
 
 The marquee `/generate` workflow turns a text prompt into an image via NVIDIA NIM (`flux.1-schnell`), orchestrated by the [Genblaze](https://pypi.org/project/genblaze-core/) SDK and written to B2 with a SHA-256 provenance manifest. The app boots fine without it — the endpoint returns a clean `503` — so this is optional. To enable it, grab a free key with starter credits at [build.nvidia.com](https://build.nvidia.com) (it looks like `nvapi-...`) and set `NVIDIA_API_KEY` in `.env`. Generation is **Pro-gated**, so sign in on a Pro plan (a Stripe test checkout is enough) to try it. The model and image size are configurable via `NVIDIA_IMAGE_MODEL` and the `GENERATION_*` settings in `services/api/app/config/settings.py`.
@@ -237,6 +239,7 @@ Full production topology — Vercel + Railway/Render/Fly, hosted Supabase, Strip
 | [AGENTS.md](AGENTS.md) | Agent table of contents — start here |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System layout, layering, data flows |
 | [docs/deployment.md](docs/deployment.md) | Production deploy — Vercel + Railway/Render/Fly, hosted Supabase, Stripe live-mode |
+| [docs/stripe-setup.md](docs/stripe-setup.md) | Stripe billing setup — Stripe CLI, recurring prices, webhook signing secret, local Checkout testing |
 | [docs/features/](docs/features/) | Feature docs (auth, billing, generation, admin, upload, browser, dashboard, metadata) |
 | [docs/design-system.md](docs/design-system.md) | Design tokens, primitives, AI elements, loader, error/empty states |
 | [docs/app-workflows.md](docs/app-workflows.md) | User journeys |
