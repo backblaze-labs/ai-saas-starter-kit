@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  type LucideIcon,
   LayoutDashboard,
   Upload,
   FolderOpen,
@@ -29,17 +30,74 @@ import {
 import { APP_NAME } from "@/lib/app-config";
 import { useAuth } from "@/components/auth/auth-provider";
 
-const navItems = [
+type NavItem = { title: string; href: string; icon: LucideIcon };
+type NavGroupDef = { label: string; items: NavItem[] };
+
+// Grouped nav. Product features lead; the Storage group deliberately surfaces the
+// B2-backed Upload/Files pages (this is a storage-first starter, so the bucket is
+// named, not hidden); account/settings and the Design System reference come last.
+const productItems: NavItem[] = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Generate", href: "/generate", icon: Wand2 },
+  { title: "Billing", href: "/billing", icon: CreditCard },
+];
+
+const storageItems: NavItem[] = [
   { title: "Upload", href: "/upload", icon: Upload },
   { title: "Files", href: "/files", icon: FolderOpen },
-  { title: "Billing", href: "/billing", icon: CreditCard },
+];
+
+const accountItems: NavItem[] = [
   { title: "Account", href: "/account", icon: UserRound },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
 
-const utilItems = [{ title: "Design System", href: "/design", icon: Sparkles }];
+const referenceItems: NavItem[] = [
+  { title: "Design System", href: "/design", icon: Sparkles },
+];
+
+function NavGroup({
+  label,
+  items,
+  pathname,
+}: {
+  label: string;
+  items: NavItem[];
+  pathname: string;
+}) {
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive}
+                  className={
+                    isActive
+                      ? "relative font-semibold before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-[3px] before:rounded-r-full before:bg-primary"
+                      : ""
+                  }
+                >
+                  <Link href={item.href}>
+                    <item.icon className="h-4 w-4" />
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -47,9 +105,16 @@ export function AppSidebar() {
 
   // Admin is only shown to admins. The route + every /admin API is also gated
   // server-side, so hiding the link is a convenience, not the security boundary.
-  const items = isAdmin
-    ? [...navItems, { title: "Admin", href: "/admin", icon: ShieldCheck }]
-    : navItems;
+  const accountGroupItems = isAdmin
+    ? [...accountItems, { title: "Admin", href: "/admin", icon: ShieldCheck }]
+    : accountItems;
+
+  const groups: NavGroupDef[] = [
+    { label: "Product", items: productItems },
+    { label: "Storage", items: storageItems },
+    { label: "Account", items: accountGroupItems },
+    { label: "Reference", items: referenceItems },
+  ];
 
   return (
     <Sidebar>
@@ -66,66 +131,14 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Navigation
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => {
-                const isActive = pathname === item.href;
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      className={
-                        isActive
-                          ? "relative font-semibold before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-[3px] before:rounded-r-full before:bg-primary"
-                          : ""
-                      }
-                    >
-                      <Link href={item.href}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Reference
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {utilItems.map((item) => {
-                const isActive = pathname === item.href;
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      className={
-                        isActive
-                          ? "relative font-semibold before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-[3px] before:rounded-r-full before:bg-primary"
-                          : ""
-                      }
-                    >
-                      <Link href={item.href}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {groups.map((group) => (
+          <NavGroup
+            key={group.label}
+            label={group.label}
+            items={group.items}
+            pathname={pathname}
+          />
+        ))}
       </SidebarContent>
 
       <SidebarFooter className="gap-2 border-t border-sidebar-border px-4 py-3">
