@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     generation_prefix: str = "generated"
 
     api_port: int = 8000
+    # Interactive API docs (/docs, /redoc, /openapi.json). On by default for
+    # local dev and starter-kit exploration; set false to hide the full API
+    # surface in production.
+    enable_docs: bool = True
     # Explicit allowlist by default — covers Next on :3000 and the
     # fallback :3001 it picks if 3000 is busy. Production deploys should
     # override with the exact frontend origin.
@@ -84,6 +88,24 @@ class Settings(BaseSettings):
 
     # Upload limits
     max_file_size: int = 100 * 1024 * 1024  # 100MB
+
+    # Optional confinement for key-addressed reads/deletes. Empty by default so
+    # the by-key routes accept any key shape (they deliberately support nested
+    # folders and reserved-word segments). NOTE for this app: we write to TWO
+    # prefixes — user uploads under "uploads/" AND generated media under
+    # settings.generation_prefix — so setting this to a single prefix would hide
+    # the other. Only set it (e.g. "uploads/") if this deployment shares the
+    # bucket with unrelated data AND you scope it to cover every prefix the app
+    # itself writes.
+    allowed_key_prefix: str = ""
+
+    # Rate limiting (per client IP, per 60s window). In-process per replica —
+    # documented in docs/RELIABILITY.md; horizontal scaling needs a shared
+    # store (e.g. Redis). Writes/downloads get the tighter cap.
+    rate_limit_per_minute: int = 120
+    # Covers uploads, deletes, downloads and previews — kept generous enough
+    # that a normal browsing/upload session doesn't trip it.
+    rate_limit_write_per_minute: int = 60
 
     # Small durable counters (downloads, etc). Point at a persistent
     # volume in production if you care about surviving restarts.
@@ -102,7 +124,9 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        return [o.strip() for o in self.api_cors_origins.split(",")]
+        # Drop empties so a trailing comma or API_CORS_ORIGINS="" doesn't yield
+        # a stray "" origin.
+        return [o.strip() for o in self.api_cors_origins.split(",") if o.strip()]
 
 
 settings = Settings()

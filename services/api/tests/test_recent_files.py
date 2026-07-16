@@ -32,7 +32,7 @@ async def test_recent_uploads_sorted_newest_first(client, monkeypatch):
     # Simulate S3 returning in lexicographic order (alpha, middle, zebra)
     fake_files.sort(key=lambda f: f.key)
     monkeypatch.setattr(
-        files_service, "list_files", lambda prefix, max_keys: fake_files
+        files_service, "list_files", lambda prefix="": fake_files
     )
 
     response = await client.get("/files?limit=2")
@@ -54,7 +54,7 @@ async def test_limit_applied_after_sort(client, monkeypatch):
     # S3 returns lexicographic order
     fake_files.sort(key=lambda f: f.key)
     monkeypatch.setattr(
-        files_service, "list_files", lambda prefix, max_keys: fake_files
+        files_service, "list_files", lambda prefix="": fake_files
     )
 
     response = await client.get("/files?limit=5")

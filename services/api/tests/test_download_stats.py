@@ -4,13 +4,14 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.repo import counter
 from app.service import files as files_service
 from app.types import FileMetadata
 
 
 @pytest.mark.asyncio
 async def test_downloads_increment_stats(client, monkeypatch):
-    monkeypatch.setattr(files_service, "_download_count", 0)
+    monkeypatch.setattr(counter, "_count", 0)
     monkeypatch.setattr(
         files_service,
         "get_upload_stats",
@@ -56,7 +57,7 @@ async def test_downloads_increment_stats(client, monkeypatch):
 @pytest.mark.asyncio
 async def test_preview_does_not_increment_downloads(client, monkeypatch):
     """Preview returns a presigned URL without bumping the download counter."""
-    monkeypatch.setattr(files_service, "_download_count", 0)
+    monkeypatch.setattr(counter, "_count", 0)
 
     def fake_metadata(key: str) -> FileMetadata:
         return FileMetadata(

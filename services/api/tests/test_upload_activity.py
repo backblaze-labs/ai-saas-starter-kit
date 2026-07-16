@@ -32,7 +32,7 @@ async def test_upload_activity_returns_daily_counts(client, monkeypatch):
         _make_file("uploads/b.txt", today),
         _make_file("uploads/c.txt", yesterday),
     ]
-    monkeypatch.setattr(files_service, "list_files", lambda prefix, max_keys: fake_files)
+    monkeypatch.setattr(files_service, "list_files", lambda prefix="": fake_files)
 
     response = await client.get("/files/stats/activity?days=7")
     assert response.status_code == 200
@@ -57,7 +57,7 @@ async def test_upload_activity_rejects_invalid_days(client):
 
 @pytest.mark.asyncio
 async def test_upload_activity_fills_missing_days(client, monkeypatch):
-    monkeypatch.setattr(files_service, "list_files", lambda prefix, max_keys: [])
+    monkeypatch.setattr(files_service, "list_files", lambda prefix="": [])
 
     response = await client.get("/files/stats/activity?days=3")
     assert response.status_code == 200

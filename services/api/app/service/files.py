@@ -1,20 +1,16 @@
-import contextlib
-import json
 import logging
-import os
 import re
-import tempfile
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from threading import Lock
 
 from app.config import settings
 from app.repo import (
     delete_file,
+    get_download_count,
     get_file_metadata,
     get_presigned_url,
     get_upload_stats,
+    increment_download_count,
     list_files,
 )
 from app.types import FileMetadata, UploadStats
@@ -23,62 +19,6 @@ from app.types.stats import DailyUploadCount
 logger = logging.getLogger(__name__)
 
 _DANGEROUS_KEY_RE = re.compile(r"(\.\./|/\.\.|\\|%2e%2e|%00|\x00)")
-_download_lock = Lock()
-
-
-def _counter_path() -> Path:
-    """Resolve the counter file path relative to the api service root."""
-    p = Path(settings.download_count_file)
-    if not p.is_absolute():
-        # Anchor at services/api/ (three levels up from this file)
-        p = Path(__file__).resolve().parents[2] / p
-    return p
-
-
-def _load_download_count() -> int:
-    """Read persisted counter; return 0 if the file is missing or unreadable."""
-    try:
-        with open(_counter_path()) as f:
-            return int(json.load(f).get("count", 0))
-    except (FileNotFoundError, json.JSONDecodeError, ValueError, TypeError):
-        return 0
-
-
-def _save_download_count(count: int) -> None:
-    """Atomically persist the counter. Caller must hold the download lock."""
-    path = _counter_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # Atomic write: tmp file in the same dir, then rename.
-        fd, tmp = tempfile.mkstemp(
-            dir=path.parent, prefix=path.name + ".", suffix=".tmp"
-        )
-        try:
-            with os.fdopen(fd, "w") as f:
-                json.dump({"count": count}, f)
-            os.replace(tmp, path)
-        except Exception:
-            with contextlib.suppress(OSError):
-                os.unlink(tmp)
-            raise
-    except OSError as e:
-        # Counter persistence failing shouldn't break downloads — log and move on.
-        logger.warning("Failed to persist download counter: %s", e)
-
-
-_download_count = _load_download_count()
-
-
-def _record_download() -> None:
-    global _download_count
-    with _download_lock:
-        _download_count += 1
-        _save_download_count(_download_count)
-
-
-def get_download_count() -> int:
-    with _download_lock:
-        return _download_count
 
 
 class FileKeyError(Exception):
@@ -89,8 +29,13 @@ class FileKeyError(Exception):
         super().__init__(detail)
 
 
-class FileNotFoundError(Exception):
-    """Raised when a file is not found."""
+class FileNotFoundServiceError(Exception):
+    """Raised when a file is not found.
+
+    Named distinctly from the built-in ``FileNotFoundError`` so it never
+    shadows it at module scope — code here (and in callers) can rely on the
+    built-in meaning what it says.
+    """
 
     def __init__(self, detail: str = "File not found"):
         self.detail = detail
@@ -98,19 +43,30 @@ class FileNotFoundError(Exception):
 
 
 def validate_key(key: str) -> None:
-    """Reject empty keys and keys that contain path-traversal patterns."""
+    """Reject empty keys, path-traversal patterns, and — when configured — keys
+    outside the allowed prefix.
+
+    `settings.allowed_key_prefix` is empty by default, so any key shape is
+    accepted (the by-key routes deliberately support arbitrary folders and
+    reserved-word segments). Set it to confine key ops to a prefix like
+    "uploads/" when the bucket also holds non-app data.
+    """
     if not key:
         raise FileKeyError()
     if _DANGEROUS_KEY_RE.search(key.lower()):
+        raise FileKeyError()
+    prefix = settings.allowed_key_prefix
+    if prefix and not key.startswith(prefix):
         raise FileKeyError()
 
 
 def get_files(prefix: str = "", limit: int = 100) -> list[FileMetadata]:
     if limit < 1 or limit > 1000:
         raise ValueError("Limit must be between 1 and 1000")
-    # S3 list_objects_v2 returns objects in lexicographic order, not by date.
-    # Fetch a full batch, sort newest-first, then slice to the requested limit.
-    files = list_files(prefix=prefix, max_keys=1000)
+    # list_files paginates the whole prefix (not just the first 1000 keys).
+    # Sort newest-first here so the endpoint's "recent uploads" contract holds
+    # regardless of repo ordering, then slice to the requested limit.
+    files = list_files(prefix=prefix)
     files.sort(key=lambda f: f.uploaded_at, reverse=True)
     return files[:limit]
 
@@ -125,7 +81,7 @@ def get_file(key: str) -> FileMetadata:
     validate_key(key)
     metadata = get_file_metadata(key)
     if not metadata:
-        raise FileNotFoundError()
+        raise FileNotFoundServiceError()
     return metadata
 
 
@@ -139,14 +95,14 @@ def get_preview_url(key: str) -> str:
     validate_key(key)
     metadata = get_file_metadata(key)
     if not metadata:
-        raise FileNotFoundError()
+        raise FileNotFoundServiceError()
     return get_presigned_url(key, filename=metadata.filename)
 
 
 def get_download_url(key: str) -> str:
     """Return a presigned URL and record the event as a download."""
     url = get_preview_url(key)
-    _record_download()
+    increment_download_count()
     return url
 
 
@@ -158,7 +114,7 @@ def remove_file(key: str) -> None:
 
 def get_upload_activity(days: int = 7) -> list[DailyUploadCount]:
     """Return daily upload counts for the last N days."""
-    files = list_files(prefix="", max_keys=1000)
+    files = list_files(prefix="")
     today = datetime.now(UTC).date()
     cutoff = today - timedelta(days=days - 1)
 

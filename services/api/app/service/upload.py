@@ -6,6 +6,9 @@ from app.service.metadata import extract_metadata
 from app.types import FileUploadResponse
 from app.types.formatting import humanize_bytes
 
+# Note: image/svg+xml is deliberately excluded. SVGs can embed <script>, so a
+# file stored and later served from a public bucket URL would execute in the
+# browser (stored XSS). Re-add only with server-side SVG sanitization.
 ALLOWED_TYPES = {
     "image/jpeg",
     "image/png",
@@ -19,7 +22,6 @@ ALLOWED_TYPES = {
     "video/mp4",
     "audio/mpeg",
     "audio/wav",
-    "image/svg+xml",
 }
 
 MIME_EXTENSION_MAP: dict[str, set[str]] = {
@@ -35,8 +37,43 @@ MIME_EXTENSION_MAP: dict[str, set[str]] = {
     "video/mp4": {"mp4"},
     "audio/mpeg": {"mp3", "mpeg"},
     "audio/wav": {"wav"},
-    "image/svg+xml": {"svg"},
 }
+
+
+# Magic-byte signatures for the binary types we accept. The client-declared
+# content_type is untrusted, so we sniff the leading bytes and reject obvious
+# mismatches (e.g. an HTML/script payload uploaded as image/png). Text-like
+# types (text/plain, text/csv, application/json) have no reliable signature and
+# are intentionally omitted — they skip this check but remain constrained by
+# the extension/type consistency check.
+def matches_content_signature(data: bytes, content_type: str) -> bool:
+    """Return True if `data`'s leading bytes are consistent with `content_type`.
+
+    Types without a known signature return True (nothing to verify).
+    """
+    if content_type == "image/jpeg":
+        return data[:3] == b"\xff\xd8\xff"
+    if content_type == "image/png":
+        return data[:8] == b"\x89PNG\r\n\x1a\n"
+    if content_type == "image/gif":
+        return data[:6] in (b"GIF87a", b"GIF89a")
+    if content_type == "image/webp":
+        return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    if content_type == "application/pdf":
+        return data[:5] == b"%PDF-"
+    if content_type == "application/zip":
+        return data[:4] in (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
+    if content_type == "video/mp4":
+        return data[4:8] == b"ftyp"  # ISO base media 'ftyp' box
+    if content_type == "audio/mpeg":
+        # ID3 tag, or an MPEG audio frame sync (11 set bits).
+        return data[:3] == b"ID3" or (
+            len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0
+        )
+    if content_type == "audio/wav":
+        return data[:4] == b"RIFF" and data[8:12] == b"WAVE"
+    return True
+
 
 _SAFE_FILENAME_RE = re.compile(r"[^\w\-.]")
 
@@ -49,8 +86,16 @@ def sanitize_filename(filename: str) -> str:
     name = re.sub(r"[_.]{2,}", "_", name)
     name = name.lstrip(".").strip()
     if len(name) > 200:
-        base, _, ext = name.rpartition(".")
-        name = base[: 200 - len(ext) - 1] + "." + ext if ext else name[:200]
+        base, sep, ext = name.rpartition(".")
+        # Preserve the extension only when there is one that still fits;
+        # otherwise (no dot, or an absurdly long "extension") hard-truncate.
+        # `rpartition` returns ("", "", name) when there is no dot, so guard on
+        # `sep`, not `ext` — else an extensionless name keeps its whole body.
+        name = (
+            base[: 200 - len(ext) - 1] + "." + ext
+            if sep and len(ext) < 200
+            else name[:200]
+        )
     return name or "unnamed"
 
 
@@ -105,6 +150,11 @@ def process_upload(
 
     if len(file_data) == 0:
         raise UploadError("Empty file")
+
+    if not matches_content_signature(file_data, content_type):
+        raise UploadError(
+            "File contents do not match the declared type", status_code=415
+        )
 
     if len(file_data) > settings.max_file_size:
         raise UploadError(

@@ -99,10 +99,19 @@ async def timing_middleware(request: Request, call_next):
             status_code=500,
             content=ErrorResponse().model_dump(),
         )
+    # Baseline security headers on every API response. `nosniff` stops browsers
+    # MIME-sniffing a response into something executable; `no-referrer` avoids
+    # leaking URLs (which can carry keys) to third parties.
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+
     duration = time.time() - start
-    # Use the matched route template to avoid unbounded cardinality
+    # Use the matched route template to avoid unbounded cardinality. Requests
+    # that never routed (404s, or 429s short-circuited by the rate limiter)
+    # have no route — collapse them to one label instead of the raw URL, or a
+    # flood of distinct rejected paths would mint a metric series each.
     route = request.scope.get("route")
-    path = route.path if route else request.url.path
+    path = route.path if route else "<unmatched>"
     record_request(
         request.method,
         path,

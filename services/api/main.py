@@ -26,6 +26,7 @@ from app.runtime import (  # noqa: E402
     generation,
     health,
     metrics,
+    ratelimit,
     upload,
 )
 
@@ -147,6 +148,10 @@ app = FastAPI(
     description="File upload and management API backed by Backblaze B2",
     version="0.1.0",
     lifespan=lifespan,
+    # Interactive docs are toggleable so production can hide the API surface.
+    docs_url="/docs" if settings.enable_docs else None,
+    redoc_url="/redoc" if settings.enable_docs else None,
+    openapi_url="/openapi.json" if settings.enable_docs else None,
 )
 
 # --- Middleware ordering matters for CORS-on-errors ---
@@ -162,7 +167,11 @@ app = FastAPI(
 # masking the real server bug. So: register the inner middleware FIRST, CORS
 # LAST. Do not reorder these two without re-reading this comment.
 
-# Request ID + timing middleware (inner). Its except-clause is the catch-all
+# Rate limiting (innermost). Registered first so it sits inside timing: a 429
+# is a normal response that timing records and CORS still wraps with headers.
+app.add_middleware(BaseHTTPMiddleware, dispatch=ratelimit.rate_limit_middleware)
+
+# Request ID + timing middleware. Its except-clause is the catch-all
 # that turns uncaught exceptions into a typed 500 — see metrics.timing_middleware.
 app.add_middleware(BaseHTTPMiddleware, dispatch=metrics.timing_middleware)
 
@@ -173,7 +182,12 @@ app.add_middleware(
     # Optional regex (empty by default). When set, any origin matching
     # the pattern is allowed in addition to the explicit allowlist.
     allow_origin_regex=settings.api_cors_origin_regex or None,
-    allow_credentials=True,
+    # API auth is bearer-token (Authorization header), NOT cookies, so
+    # credentialed CORS isn't needed. Keeping this False avoids the footgun
+    # where a loose origin regex would otherwise reflect an attacker's origin
+    # *with* credentials. Flip to True only if you switch to cookie-based auth
+    # AND have tightened the origin allowlist.
+    allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )

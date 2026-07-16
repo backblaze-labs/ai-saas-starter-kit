@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.runtime.metrics import record_upload
@@ -15,8 +16,13 @@ router = APIRouter()
 @router.post("/upload", response_model=FileUploadResponse)
 async def upload(request: Request, file: UploadFile):
     content_type = file.content_type or "application/octet-stream"
+    # A malformed Content-Length shouldn't 500 the request; the streaming loop
+    # below enforces the real size limit regardless of the header.
     content_length_header = request.headers.get("content-length")
-    content_length = int(content_length_header) if content_length_header else None
+    try:
+        content_length = int(content_length_header) if content_length_header else None
+    except ValueError:
+        content_length = None
 
     # Read file with chunked streaming and early size rejection
     chunks: list[bytes] = []
@@ -32,7 +38,10 @@ async def upload(request: Request, file: UploadFile):
     file_data = b"".join(chunks)
 
     try:
-        result = process_upload(
+        # process_upload does blocking work (hashing, metadata, B2 put_object).
+        # Offload it so the streaming event loop isn't blocked while it runs.
+        result = await run_in_threadpool(
+            process_upload,
             file_data=file_data,
             filename=file.filename or "",
             content_type=content_type,
