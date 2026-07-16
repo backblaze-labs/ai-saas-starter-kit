@@ -4,17 +4,19 @@ import pytest
 
 from app.service import files as files_service
 
+from .conftest import TEST_USER_ID
+
 
 @pytest.mark.asyncio
-async def test_unhandled_exception_returns_500(client, monkeypatch):
+async def test_unhandled_exception_returns_500(auth_client, monkeypatch):
     """Global handler catches unhandled exceptions and returns 500 JSON."""
 
-    def explode(**kwargs):
+    def explode(*args, **kwargs):
         raise RuntimeError("B2 exploded")
 
     monkeypatch.setattr(files_service, "list_files", explode)
 
-    response = await client.get("/files")
+    response = await auth_client.get("/files")
     assert response.status_code == 500
     body = response.json()
     assert body["detail"] == "Internal server error"
@@ -23,7 +25,7 @@ async def test_unhandled_exception_returns_500(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_unhandled_exception_500_carries_cors_headers(client, monkeypatch):
+async def test_unhandled_exception_500_carries_cors_headers(auth_client, monkeypatch):
     """An uncaught-exception 500 must still carry CORS headers.
 
     Regression guard for the structural bug where the catch-all middleware sat
@@ -39,7 +41,7 @@ async def test_unhandled_exception_500_carries_cors_headers(client, monkeypatch)
     monkeypatch.setattr(files_service, "list_files", explode)
 
     origin = "http://localhost:3000"
-    response = await client.get("/files", headers={"Origin": origin})
+    response = await auth_client.get("/files", headers={"Origin": origin})
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal server error"
@@ -48,25 +50,27 @@ async def test_unhandled_exception_500_carries_cors_headers(client, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_stats_b2_failure_returns_500(client, monkeypatch):
+async def test_stats_b2_failure_returns_500(auth_client, monkeypatch):
     """Stats endpoint returns 500 when B2 is unreachable."""
 
-    def explode():
+    def explode(*args, **kwargs):
         raise RuntimeError("B2 stats query failed")
 
-    monkeypatch.setattr(files_service, "get_upload_stats", explode)
+    monkeypatch.setattr(files_service, "list_files", explode)
 
-    response = await client.get("/files/stats")
+    response = await auth_client.get("/files/stats")
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal server error"
 
 
 @pytest.mark.asyncio
-async def test_download_not_found_returns_404(client, monkeypatch):
-    """Download for a missing file returns 404 with detail."""
+async def test_download_not_found_returns_404(auth_client, monkeypatch):
+    """Download for a missing (but owned) file returns 404 with detail."""
     monkeypatch.setattr(files_service, "get_file_metadata", lambda key: None)
 
-    response = await client.get("/files/uploads/missing.txt/download")
+    response = await auth_client.get(
+        f"/files/uploads/{TEST_USER_ID}/missing.txt/download"
+    )
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
 
@@ -94,11 +98,11 @@ def test_traversal_keys_are_rejected():
 
 
 @pytest.mark.asyncio
-async def test_upload_empty_file_returns_400(client):
+async def test_upload_empty_file_returns_400(auth_client):
     """Uploading an empty file returns 400 with explanation."""
     from io import BytesIO
 
-    response = await client.post(
+    response = await auth_client.post(
         "/upload",
         files={"file": ("empty.txt", BytesIO(b""), "text/plain")},
     )

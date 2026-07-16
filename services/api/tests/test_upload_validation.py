@@ -6,11 +6,19 @@ from app.service import upload as upload_service
 from app.service.upload import (
     UploadError,
     matches_content_signature,
-    process_upload,
     sanitize_filename,
     validate_extension_matches_type,
 )
 from app.types import FileUploadResponse
+
+from .conftest import TEST_USER_ID
+
+
+def process_upload(*args, **kwargs):
+    """process_upload now requires a caller id; default it for the rejection
+    matrix, which fails before the key is ever built."""
+    kwargs.setdefault("user_id", TEST_USER_ID)
+    return upload_service.process_upload(*args, **kwargs)
 
 # --- sanitize_filename ------------------------------------------------------
 
@@ -132,14 +140,15 @@ def test_rejects_empty_file():
 
 
 @pytest.mark.asyncio
-async def test_successful_upload_increments_uploads_metric(client, monkeypatch):
+async def test_successful_upload_increments_uploads_metric(auth_client, monkeypatch):
     from app.runtime import metrics
 
     monkeypatch.setattr(metrics, "_upload_count", 0)
-    monkeypatch.setattr(
-        upload_service,
-        "upload_file",
-        lambda file_data, key, content_type: FileUploadResponse(
+    captured: dict = {}
+
+    def fake_upload_file(file_data, key, content_type):
+        captured["key"] = key
+        return FileUploadResponse(
             key=key,
             filename="a.txt",
             size_bytes=len(file_data),
@@ -148,16 +157,27 @@ async def test_successful_upload_increments_uploads_metric(client, monkeypatch):
             uploaded_at="2026-02-14T00:00:00Z",
             url=None,
             metadata=None,
-        ),
-    )
+        )
+
+    monkeypatch.setattr(upload_service, "upload_file", fake_upload_file)
     monkeypatch.setattr(
         upload_service, "extract_metadata", lambda file_data, filename, content_type: None
     )
 
-    resp = await client.post(
+    resp = await auth_client.post(
         "/upload", files={"file": ("a.txt", b"hello", "text/plain")}
     )
     assert resp.status_code == 200
+    # The write landed under the caller's own prefix, not a flat uploads/.
+    assert captured["key"] == f"uploads/{TEST_USER_ID}/a.txt"
 
-    metrics_resp = await client.get("/metrics")
+    metrics_resp = await auth_client.get("/metrics")
     assert "uploads_total 1" in metrics_resp.text
+
+
+@pytest.mark.asyncio
+async def test_upload_requires_auth(client):
+    resp = await client.post(
+        "/upload", files={"file": ("a.txt", b"hello", "text/plain")}
+    )
+    assert resp.status_code == 401

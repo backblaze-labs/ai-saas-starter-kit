@@ -1,12 +1,14 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
 from app.config import settings
+from app.runtime.auth import get_current_user
 from app.runtime.metrics import record_upload
 from app.service.upload import UploadError, process_upload
 from app.types import FileUploadResponse
+from app.types.auth import AuthUser
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +16,11 @@ router = APIRouter()
 
 
 @router.post("/upload", response_model=FileUploadResponse)
-async def upload(request: Request, file: UploadFile):
+async def upload(
+    request: Request,
+    file: UploadFile,
+    current_user: AuthUser = Depends(get_current_user),
+):
     content_type = file.content_type or "application/octet-stream"
     # A malformed Content-Length shouldn't 500 the request; the streaming loop
     # below enforces the real size limit regardless of the header.
@@ -46,6 +52,7 @@ async def upload(request: Request, file: UploadFile):
             filename=file.filename or "",
             content_type=content_type,
             content_length=content_length,
+            user_id=current_user.id,
         )
     except UploadError as e:
         logger.warning("Upload rejected: %s", e.detail)

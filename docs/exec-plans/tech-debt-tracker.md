@@ -3,6 +3,16 @@
 
 Known tech debt items. Agents update this when they discover or create tech debt.
 
+## 2026-07-16 — verify
+
+Nitpicks surfaced by the verify pass on the file surface (logged, not blocking; the auth/ownership blocker and the preview-spinner friction were fixed in the same change):
+
+- **A1** — Signup screen copy tells the user to "then sign in" even though the flow may hand them straight into a session; reconcile the wording with the actual post-signup behavior.
+- **A3** — Dashboard renders a Free-plan "Inactive" badge that reads like an error state rather than simply "no paid subscription"; soften the label/variant.
+- **A4** — "Design System" link lives in the primary product nav; consider moving it to a utility/footer slot so the main nav is product-only.
+- **B-delete** — File delete has no optimistic removal; the row only disappears after the round-trip completes.
+- **C3** — Generated object keys carry a redundant date segment (`generated/{user_id}/{date}/runs/{date}/…`); purely cosmetic — collapse the duplicate date.
+
 ## Open
 
 | Description | Impact | Proposed Resolution | Priority |
@@ -31,6 +41,7 @@ Known tech debt items. Agents update this when they discover or create tech debt
 | CORS `allow_credentials=True` was unnecessary for this app's bearer-token auth | Default `allow_credentials=False` — the API is authenticated by a Supabase bearer token in the `Authorization` header, not a cross-origin cookie; empty origins filtered |
 | No security headers on API responses | `X-Content-Type-Options: nosniff` + `Referrer-Policy: no-referrer` on every response |
 | Key-addressed ops could target any bucket object | Opt-in `ALLOWED_KEY_PREFIX` confinement (off by default; note this app writes under both `uploads/` and `generated/`) |
+| File endpoints had no auth and no per-user isolation — anyone (even anonymous) could list/preview/download/delete any object, and a signed-in user saw every tenant's `uploads/`/`generated/` keys | Every file + upload route now requires a Supabase bearer token (`401` otherwise); reads/listings/stats are scoped to the caller's `uploads/{user_id}/` + `generated/{user_id}/` prefixes; uploads are keyed under `uploads/{user_id}/`; key-addressed ops `404` for keys the caller doesn't own (no existence leak) |
 | Redundant triple-scan + double sort per dashboard mount | TTL cache + single-flight collapse the concurrent empty-prefix scans; dropped the repo-layer sort so `get_files` owns newest-first ordering once |
 | Unguarded `int(content-length)`; always-on `/docs`; uncached `/health` B2 call | Content-Length parse guarded; `ENABLE_DOCS` toggle (documented in SECURITY.md); connectivity cached ~5s |
 | Upload validation sad-paths (413/415) + sanitizer untested | `tests/test_upload_validation.py` covers the rejection matrix, signature check, `uploads_total` |

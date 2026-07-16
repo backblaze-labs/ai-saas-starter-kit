@@ -1,9 +1,10 @@
 """Per-IP fixed-window rate limiting.
 
-The file endpoints (list/stats/upload/download/delete) are unauthenticated, so
-without throttling a client can hammer the expensive list/stats endpoints or
-loop delete/download calls — a DoS and a Backblaze transaction/egress
-cost-amplification vector. This is a small, dependency-free fixed-window limiter.
+The file endpoints (list/stats/upload/download/delete) are authenticated and
+per-user scoped, but a single authenticated client can still hammer the
+expensive list/stats endpoints or loop delete/download calls — a DoS and a
+Backblaze transaction/egress cost-amplification vector. This is a small,
+dependency-free fixed-window limiter (per client IP, ahead of auth).
 
 Scope: in-process, per replica. That's acceptable for a starter kit; horizontal
 scaling (multiple Railway replicas) needs a shared store like Redis. Documented

@@ -1,12 +1,15 @@
-<!-- last_verified: 2026-07-15 -->
+<!-- last_verified: 2026-07-16 -->
 # Feature: File Browser
 
 ## Purpose
 List, preview, download, and delete files stored in Backblaze B2.
 
+## Authentication & Scoping
+Every file route is **authenticated** — a request without a valid Supabase bearer token returns `401`. Access is **scoped per user**: listings and stats cover only the caller's own objects (the union of `uploads/{user_id}/` and `generated/{user_id}/`), and key-addressed reads/deletes `404` for any key the caller doesn't own (existence is never leaked). The web client attaches the token automatically via `authHeaders()` in `lib/api-client.ts`, so every list/stats/activity/upload/preview/download/metadata/delete call carries it. See [SECURITY.md](../SECURITY.md#file-key-validation--ownership).
+
 ## Used By
 - UI: `/files` page, file browser component
-- API: `GET /files`, `GET /files-by-key/metadata?key=...`, `GET /files-by-key/download?key=...`, `GET /files-by-key/preview?key=...`, `DELETE /files-by-key?key=...`
+- API (all authenticated, per-user scoped): `GET /files`, `GET /files/stats`, `GET /files/stats/activity`, `GET /files-by-key/metadata?key=...`, `GET /files-by-key/download?key=...`, `GET /files-by-key/preview?key=...`, `DELETE /files-by-key?key=...`
 - Legacy API: `GET /files/{key}`, `GET /files/{key}/download`, `GET /files/{key}/preview`, `DELETE /files/{key}`
 
 ## Core Functions
@@ -25,9 +28,11 @@ List, preview, download, and delete files stored in Backblaze B2.
 - B2 data access pattern: `services/api/app/repo/b2_client.py`
 
 ## Inputs
-- prefix: string (optional filter for file listing)
 - limit: int (max files to return, 1-1000, default 100)
-- key: string (file key for get/download/delete — sent as a query parameter by the web client; no path traversal)
+- key: string (file key for get/download/delete — sent as a query parameter by the web client; no path traversal; must be under the caller's own `uploads/{user_id}/` or `generated/{user_id}/` prefix or the route 404s)
+- Authorization: `Bearer <supabase access token>` header — required on every file route
+
+The listing is always scoped to the authenticated caller (the union of their upload and generated-media prefixes); there is no server-side arbitrary-`prefix` filter.
 
 ## Outputs
 - `GET /files` → `FileMetadata[]` (sorted most recent first)
@@ -50,6 +55,8 @@ List, preview, download, and delete files stored in Backblaze B2.
 - During frontend/API version skew, the web client falls back to legacy path routes only for keys that cannot collide with reserved file routes such as stats, download, or preview.
 
 ## Edge Cases
+- No / invalid bearer token → API returns 401 (before any key handling)
+- Key not owned by the caller (another tenant's object, or outside the caller's prefixes) → API returns 404 (existence not leaked)
 - File not found (deleted externally) → API returns 404
 - Invalid file key (traversal attempt, empty key) → API returns 400
 - File key contains `/`, spaces, `#`, `?`, `%`, reserved route names, or suffixes like `/download` and `/preview` → web client sends the key as a query parameter before calling get/download/preview/delete routes
@@ -62,11 +69,11 @@ List, preview, download, and delete files stored in Backblaze B2.
 - Loading: skeleton rows
 - Error: inline error state with Retry
 - Loaded: tree view with expand/collapse folders and focus/hover action menus
-- Preview: responsive dialog with wrapped file names, fallback copy for preview URL failures, and metadata that tolerates long keys
+- Preview: responsive dialog with wrapped file names, fallback copy for preview URL failures, and metadata that tolerates long keys. A skeleton/spinner overlays the image box until the preview `<img>` finishes loading (`onLoad`), so large originals don't sit on a blank or half-painted frame during the byte download.
 
 ## Verification
-- Test files: `services/api/tests/test_file_key_routes.py`, `apps/web/src/lib/api-client.test.ts`
-- Required cases: list files, empty list, file not found, presigned URL generation, delete success, delete failure
+- Test files: `services/api/tests/test_file_key_routes.py`, `services/api/tests/test_delete.py`, `services/api/tests/test_key_prefix.py`, `services/api/tests/test_recent_files.py`, `apps/web/src/lib/api-client.test.ts`
+- Required cases: list files (scoped to the caller, union of uploads + generated), empty list, file not found, presigned URL generation, delete success, delete failure, **unauthenticated request → 401**, **key not owned by caller → 404**, **upload lands under `uploads/{user_id}/`**
 - Quick verify command: `pnpm test:api`
 - Client route-construction tests: `pnpm test:web`
 - Full verify command: `pnpm lint && pnpm test:web && pnpm build && pnpm lint:api && pnpm test:api && pnpm check:structure`

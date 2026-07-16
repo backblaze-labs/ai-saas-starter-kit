@@ -1,14 +1,40 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.runtime.auth import get_current_user
+from app.types.auth import AuthUser
 from main import app
+
+# Stable identity for the authenticated `auth_client` fixture. File tests key
+# their fake objects under this user's prefixes (uploads/{TEST_USER_ID}/ and
+# generated/{TEST_USER_ID}/) so ownership scoping resolves them as owned.
+TEST_USER_ID = "u-test"
 
 
 @pytest.fixture
 async def client():
+    """Unauthenticated client. Routes guarded by get_current_user return 401;
+    the auth/billing/generation/admin suites set their own identity by
+    monkeypatching auth_service.user_from_token and sending a bearer header."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+async def auth_client():
+    """Client authenticated as a fixed test user via a dependency override, so
+    protected file routes resolve to a real caller id without a live Supabase.
+    The override is scoped to the fixture and torn down after each test."""
+    app.dependency_overrides[get_current_user] = lambda: AuthUser(
+        id=TEST_USER_ID, email="test@example.com", role="user"
+    )
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.fixture(autouse=True)

@@ -1,45 +1,48 @@
-"""Tests for file deletion error propagation."""
-
-from datetime import UTC, datetime
+"""Tests for file deletion: error propagation, auth, and ownership scoping."""
 
 import pytest
 
 from app.service import files as files_service
-from app.types import FileMetadata
 
+from .conftest import TEST_USER_ID
 
-def _fake_metadata(key: str) -> FileMetadata:
-    return FileMetadata(
-        key=key,
-        filename="test.txt",
-        folder="uploads/",
-        size_bytes=1024,
-        size_human="1.0 KB",
-        content_type="text/plain",
-        uploaded_at=datetime.now(UTC),
-        url=None,
-    )
+OWNED_KEY = f"uploads/{TEST_USER_ID}/test.txt"
 
 
 @pytest.mark.asyncio
-async def test_delete_propagates_error(client, monkeypatch):
-    monkeypatch.setattr(files_service, "get_file_metadata", _fake_metadata)
+async def test_delete_propagates_error(auth_client, monkeypatch):
     monkeypatch.setattr(
         files_service,
         "delete_file",
         lambda key: (_ for _ in ()).throw(RuntimeError("B2 delete failed")),
     )
 
-    response = await client.delete("/files/uploads/test.txt")
+    response = await auth_client.delete(f"/files/{OWNED_KEY}")
     assert response.status_code == 500
     assert "Failed to delete file" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
-async def test_delete_success(client, monkeypatch):
-    monkeypatch.setattr(files_service, "get_file_metadata", _fake_metadata)
+async def test_delete_success(auth_client, monkeypatch):
     monkeypatch.setattr(files_service, "delete_file", lambda key: None)
 
-    response = await client.delete("/files/uploads/test.txt")
+    response = await auth_client.delete(f"/files/{OWNED_KEY}")
     assert response.status_code == 200
     assert response.json()["deleted"] is True
+
+
+@pytest.mark.asyncio
+async def test_delete_foreign_key_404s_without_touching_b2(auth_client, monkeypatch):
+    """Deleting another tenant's key returns 404 and never calls the bucket."""
+    calls: list[str] = []
+    monkeypatch.setattr(files_service, "delete_file", lambda key: calls.append(key))
+
+    response = await auth_client.delete("/files/uploads/other-user/test.txt")
+    assert response.status_code == 404
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_requires_auth(client):
+    response = await client.delete(f"/files/{OWNED_KEY}")
+    assert response.status_code == 401

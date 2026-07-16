@@ -27,17 +27,22 @@ async def test_rate_limited_response_shape(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_write_tier_has_separate_budget(client, monkeypatch):
+async def test_write_tier_has_separate_budget(auth_client, monkeypatch):
     # Reads exhausted, but a DELETE draws from the (separate) write budget.
     from app.service import files as files_service
+
+    from .conftest import TEST_USER_ID
 
     monkeypatch.setattr(settings, "rate_limit_per_minute", 1)
     monkeypatch.setattr(settings, "rate_limit_write_per_minute", 5)
     monkeypatch.setattr(files_service, "delete_file", lambda key: None)
 
-    await client.get("/health")
-    assert (await client.get("/health")).status_code == 429  # read budget spent
+    await auth_client.get("/health")
+    assert (await auth_client.get("/health")).status_code == 429  # read budget spent
 
-    # Delete uses the (still-unspent) write tier, so it is not throttled.
-    resp = await client.delete("/files-by-key", params={"key": "uploads/x.txt"})
+    # Delete uses the (still-unspent) write tier, so it is not throttled. The key
+    # is under the caller's own prefix so ownership scoping resolves it.
+    resp = await auth_client.delete(
+        "/files-by-key", params={"key": f"uploads/{TEST_USER_ID}/x.txt"}
+    )
     assert resp.status_code == 200

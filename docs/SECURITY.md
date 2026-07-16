@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-15 -->
+<!-- last_verified: 2026-07-16 -->
 # Security
 
 Security principles and implementation for the ai-saas-starter-kit.
@@ -46,11 +46,18 @@ Security principles and implementation for the ai-saas-starter-kit.
 - Per-IP fixed-window limiter (`app/runtime/ratelimit.py`), configurable via `RATE_LIMIT_PER_MINUTE` (reads) and `RATE_LIMIT_WRITE_PER_MINUTE` (uploads/deletes/downloads). Guards against DoS and Backblaze transaction/egress cost amplification.
 - In-process, per replica. Horizontal scaling needs a shared store (e.g. Redis) — see [RELIABILITY.md](RELIABILITY.md#rate-limiting).
 
+## File Surface: Authentication & Per-User Isolation
+
+- **Every file route is authenticated.** `GET /files`, `GET /files/stats`, `GET /files/stats/activity`, the `/files-by-key/*` and legacy `/files/{key}` reads/deletes, and `POST /upload` all depend on `get_current_user`; a missing or invalid bearer token returns `401`. (Rate limiting runs ahead of auth, so abusive unauthenticated traffic is still throttled per IP.)
+- **Reads/listings are scoped to the caller.** Listings and stats cover only the union of the caller's `uploads/{user_id}/` and `generated/{user_id}/` prefixes — never a bucket-wide scan — so one tenant cannot see another's uploads or generated media.
+- **Writes are scoped to the caller.** Uploaded objects are keyed under `uploads/{user_id}/…`, not a flat `uploads/…`, so users' uploads never collide with or shadow each other.
+- **Ownership is enforced on key-addressed ops.** `metadata`/`download`/`preview`/`delete` for a key outside the caller's own prefixes return `404` — not `403` — so a guessed key never confirms another user's object exists, and no user can read or delete another user's object.
+
 ## File Key Validation
 
 - Empty keys rejected
 - Path traversal patterns rejected (`../`, `%2e%2e`, backslashes, null bytes)
-- Optional prefix confinement: set `ALLOWED_KEY_PREFIX` (e.g. `uploads/`) to restrict key-addressed reads/deletes when the bucket is shared with other workloads. **Off (empty) by default.** Note this app writes under *two* prefixes — `uploads/` (user uploads) and `generated/` (AI-generated media) — so confining to a single prefix would exclude the other's keys; don't enable `uploads/` blindly. The by-key routes otherwise accept arbitrary folder and reserved-word keys by design.
+- Optional prefix confinement: set `ALLOWED_KEY_PREFIX` (e.g. `uploads/`) to add a **global** static confinement (a `400` before ownership is even checked) when the bucket is shared with other workloads. **Off (empty) by default**, and independent of the always-on per-user ownership scoping above. Note this app writes under *two* prefixes — `uploads/` and `generated/` — so confining to a single one would `400` the other's keys; don't enable `uploads/` blindly.
 
 ## Download Safety
 

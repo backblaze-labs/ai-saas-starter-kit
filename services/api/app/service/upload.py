@@ -124,8 +124,14 @@ def process_upload(
     filename: str,
     content_type: str,
     content_length: int | None = None,
+    *,
+    user_id: str,
 ) -> FileUploadResponse:
-    """Validate and process a file upload. Raises UploadError on failure."""
+    """Validate and process a file upload. Raises UploadError on failure.
+
+    The object is keyed under the caller's own prefix (``uploads/{user_id}/``)
+    so uploads are per-user isolated, matching the file browser's scoping.
+    """
     if not filename:
         raise UploadError("No filename provided")
 
@@ -163,8 +169,9 @@ def process_upload(
         )
 
     # B2 buckets are always versioned — uploading the same key creates a new
-    # version automatically.  No duplicate rejection needed.
-    key = f"uploads/{safe_name}"
+    # version automatically.  No duplicate rejection needed. The key is scoped
+    # to the caller so one user's uploads never collide with or shadow another's.
+    key = f"uploads/{user_id}/{safe_name}"
     result = upload_file(file_data, key, content_type)
     metadata = extract_metadata(file_data, safe_name, content_type)
 

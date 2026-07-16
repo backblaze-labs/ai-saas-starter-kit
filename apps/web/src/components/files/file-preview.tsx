@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -64,6 +65,14 @@ export function FilePreview({ file, open, onOpenChange }: FilePreviewProps) {
   );
   const previewUrl = data?.url ?? file?.url ?? null;
 
+  // Track which URL has finished painting. The full-resolution original can be
+  // large (the bucket holds a 25.7 MB image), and the presigned URL arrives
+  // well before the bytes do — so keep a spinner over the box until the <img>
+  // actually loads, instead of sitting on a blank/partial frame. Keyed by URL
+  // so it auto-resets when a different file's preview opens.
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const imageReady = !!previewUrl && loadedUrl === previewUrl;
+
   if (!file) return null;
 
   const isImage = file.content_type.startsWith("image/");
@@ -92,6 +101,17 @@ export function FilePreview({ file, open, onOpenChange }: FilePreviewProps) {
               </div>
             ) : isImage && previewUrl ? (
               <div className="relative h-[min(55svh,400px)] min-h-[220px] w-full">
+                {!imageReady && (
+                  <div
+                    className="absolute inset-0 z-10"
+                    role="status"
+                    aria-live="polite"
+                    aria-label="Loading preview image"
+                  >
+                    <p className="sr-only">Loading preview image…</p>
+                    <Skeleton className="h-full w-full" />
+                  </div>
+                )}
                 {/* `unoptimized` because presigned URLs carry their own
                     short-lived expiry and we don't want Next's image
                     optimizer caching them past that window. */}
@@ -100,8 +120,14 @@ export function FilePreview({ file, open, onOpenChange }: FilePreviewProps) {
                   alt={file.filename}
                   fill
                   sizes="(max-width: 768px) 100vw, 600px"
-                  className="object-contain rounded"
+                  className={`object-contain rounded transition-opacity duration-200 ${
+                    imageReady ? "opacity-100" : "opacity-0"
+                  }`}
                   unoptimized
+                  onLoad={() => setLoadedUrl(previewUrl)}
+                  // Stop the spinner on error too, so a broken/expired URL
+                  // falls through to the box background rather than spinning.
+                  onError={() => setLoadedUrl(previewUrl)}
                 />
               </div>
             ) : isPdf && previewUrl ? (

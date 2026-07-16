@@ -9,11 +9,11 @@ from app.repo import (
     get_download_count,
     get_file_metadata,
     get_presigned_url,
-    get_upload_stats,
     increment_download_count,
     list_files,
 )
 from app.types import FileMetadata, UploadStats
+from app.types.formatting import humanize_bytes
 from app.types.stats import DailyUploadCount
 
 logger = logging.getLogger(__name__)
@@ -60,61 +60,104 @@ def validate_key(key: str) -> None:
         raise FileKeyError()
 
 
-def get_files(prefix: str = "", limit: int = 100) -> list[FileMetadata]:
+def user_prefixes(user_id: str) -> tuple[str, ...]:
+    """The B2 key prefixes a user owns.
+
+    Every object the app writes for a user lands under exactly one of these:
+    their own uploads (``uploads/{user_id}/``) and their AI-generated media
+    (``{generation_prefix}/{user_id}/``). Reads, listings, and key-addressed
+    ops are confined to this set so one tenant can never see or touch another's
+    objects — even with a guessed key.
+    """
+    return (f"uploads/{user_id}/", f"{settings.generation_prefix}/{user_id}/")
+
+
+def _require_owned(user_id: str, key: str) -> None:
+    """Validate the key shape, then raise *not found* if it is not under one of
+    the caller's prefixes. Answering 404 (rather than 403) avoids leaking the
+    existence of another user's object."""
+    validate_key(key)
+    if not any(key.startswith(prefix) for prefix in user_prefixes(user_id)):
+        raise FileNotFoundServiceError()
+
+
+def _list_owned_files(user_id: str) -> list[FileMetadata]:
+    """List every object the caller owns — the union of their upload and
+    generated-media prefixes. Scans only those prefixes, never the whole bucket.
+    Each prefix scan paginates the full prefix (not just the first 1000 keys)."""
+    files: list[FileMetadata] = []
+    for prefix in user_prefixes(user_id):
+        files.extend(list_files(prefix=prefix))
+    return files
+
+
+def get_files(user_id: str, limit: int = 100) -> list[FileMetadata]:
     if limit < 1 or limit > 1000:
         raise ValueError("Limit must be between 1 and 1000")
-    # list_files paginates the whole prefix (not just the first 1000 keys).
-    # Sort newest-first here so the endpoint's "recent uploads" contract holds
-    # regardless of repo ordering, then slice to the requested limit.
-    files = list_files(prefix=prefix)
+    # Union the caller's own prefixes, then sort newest-first so the endpoint's
+    # "recent uploads" contract holds regardless of repo ordering, and slice.
+    files = _list_owned_files(user_id)
     files.sort(key=lambda f: f.uploaded_at, reverse=True)
     return files[:limit]
 
 
-def get_stats() -> UploadStats:
-    data = get_upload_stats()
-    data["total_downloads"] = get_download_count()
-    return UploadStats(**data)
+def get_stats(user_id: str) -> UploadStats:
+    """Aggregate stats over the caller's own objects only.
+
+    ``total_downloads`` stays the app-wide counter — a simple demo metric, not
+    per-user object data — while file counts/sizes are scoped to the caller.
+    """
+    files = _list_owned_files(user_id)
+    total_size = sum(f.size_bytes for f in files)
+    today = datetime.now(UTC).date()
+    uploads_today = sum(1 for f in files if f.uploaded_at.date() == today)
+    return UploadStats(
+        total_files=len(files),
+        total_size_bytes=total_size,
+        total_size_human=humanize_bytes(total_size),
+        uploads_today=uploads_today,
+        total_downloads=get_download_count(),
+    )
 
 
-def get_file(key: str) -> FileMetadata:
-    validate_key(key)
+def get_file(user_id: str, key: str) -> FileMetadata:
+    _require_owned(user_id, key)
     metadata = get_file_metadata(key)
     if not metadata:
         raise FileNotFoundServiceError()
     return metadata
 
 
-def get_preview_url(key: str) -> str:
+def get_preview_url(user_id: str, key: str) -> str:
     """Return a presigned URL without recording a download.
 
     Used by the preview modal for rendering images / PDFs inline — opening
     a preview is not a user-initiated download and shouldn't inflate the
     download counter.
     """
-    validate_key(key)
+    _require_owned(user_id, key)
     metadata = get_file_metadata(key)
     if not metadata:
         raise FileNotFoundServiceError()
     return get_presigned_url(key, filename=metadata.filename)
 
 
-def get_download_url(key: str) -> str:
+def get_download_url(user_id: str, key: str) -> str:
     """Return a presigned URL and record the event as a download."""
-    url = get_preview_url(key)
+    url = get_preview_url(user_id, key)
     increment_download_count()
     return url
 
 
-def remove_file(key: str) -> None:
-    """Validate key and delete the file. Raises RuntimeError on B2 failure."""
-    validate_key(key)
+def remove_file(user_id: str, key: str) -> None:
+    """Own the key, then delete the file. Raises RuntimeError on B2 failure."""
+    _require_owned(user_id, key)
     delete_file(key)
 
 
-def get_upload_activity(days: int = 7) -> list[DailyUploadCount]:
-    """Return daily upload counts for the last N days."""
-    files = list_files(prefix="")
+def get_upload_activity(user_id: str, days: int = 7) -> list[DailyUploadCount]:
+    """Return daily upload counts for the caller's own files over the last N days."""
+    files = _list_owned_files(user_id)
     today = datetime.now(UTC).date()
     cutoff = today - timedelta(days=days - 1)
 
