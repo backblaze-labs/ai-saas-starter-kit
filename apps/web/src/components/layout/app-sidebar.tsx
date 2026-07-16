@@ -155,7 +155,7 @@ export function AppSidebar() {
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#e42c39]" />
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--brand-b2)]" />
           Built on Backblaze B2
         </a>
       </SidebarFooter>

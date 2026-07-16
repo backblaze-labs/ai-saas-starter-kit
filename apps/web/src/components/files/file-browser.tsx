@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FolderOpen, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   AlertDialog,
@@ -104,7 +104,7 @@ export function FileBrowser() {
             variant="outline"
             size="sm"
             onClick={() => refetch()}
-            className="h-7 shrink-0 text-xs"
+            className="touch-target h-7 shrink-0 text-xs"
             disabled={isFetching}
             aria-label={isFetching ? "Refreshing file list" : "Refresh file list"}
           >
@@ -194,7 +194,10 @@ export function FileBrowser() {
             <AlertDialogAction
               onClick={confirmDelete}
               disabled={deleteMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              // Use the destructive variant so the confirm gets white-on-red
+              // (AA in both themes); AlertDialogAction merges this over its
+              // default variant.
+              className={buttonVariants({ variant: "destructive" })}
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>

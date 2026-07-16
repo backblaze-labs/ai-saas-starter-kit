@@ -49,7 +49,7 @@ export function DesignPrimitives() {
     <Section
       id="primitives"
       title="Primitives"
-      description="Every shadcn/ui component available in the starter, live."
+      description="A representative set of the shadcn/ui primitives in the starter, live."
     >
       <div className="grid gap-4 md:grid-cols-2">
         <Card>

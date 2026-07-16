@@ -3,6 +3,7 @@
 import { useCallback, useId } from "react";
 import { useDropzone, type FileRejection } from "react-dropzone";
 import { Upload, FileIcon } from "lucide-react";
+import { ACCEPTED_FILE_TYPES } from "@/lib/upload-file-types";
 
 interface DropzoneProps {
   onFilesSelected: (files: File[]) => void;
@@ -37,6 +38,7 @@ export function Dropzone({
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     onDropRejected,
+    accept: ACCEPTED_FILE_TYPES,
     maxSize: MAX_SIZE,
     disabled,
     multiple: true,

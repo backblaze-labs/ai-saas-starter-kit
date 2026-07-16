@@ -11,6 +11,7 @@
     "typecheck": "pnpm --filter @ai-media-saas-starter/web typecheck",
     "lint": "pnpm --filter @ai-media-saas-starter/web lint",
     "lint:api": "cd services/api && .venv/bin/ruff check .",
+    "test:web": "pnpm --filter @ai-media-saas-starter/web test",
     "test:api": "cd services/api && .venv/bin/python -m pytest",
     "check:structure": "cd services/api && .venv/bin/python -m pytest tests/test_structure.py -v",
     "test:e2e": "pnpm --filter @ai-media-saas-starter/web exec playwright test"

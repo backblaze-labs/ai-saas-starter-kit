@@ -36,12 +36,15 @@ const motion = [
   { name: "ease-expressive", var: "--ease-expressive" },
 ];
 
+// Labels mirror the values declared in globals.css — keep in sync. Root
+// font-size is 14px, so 1rem = 14px. Only `.page-title` uses the Mona Sans
+// display face; card titles and body use the system stack.
 const type = [
-  { label: "Page title — 26px Mona Sans 600", className: "page-title" },
-  { label: "Card title — 16px Mona Sans 600", className: "card-title" },
-  { label: "Body — 15px regular", className: "text-base" },
-  { label: "Small — 13px", className: "text-sm" },
-  { label: "Caption — 12px muted", className: "text-xs text-muted-foreground" },
+  { label: "Page title — 1.75rem Mona Sans 600", className: "page-title" },
+  { label: "Card title — 0.875rem system 600", className: "card-title" },
+  { label: "Body — 14px regular", className: "text-base" },
+  { label: "Small — 0.875rem", className: "text-sm" },
+  { label: "Caption — 0.75rem muted", className: "text-xs text-muted-foreground" },
   { label: "Mono — size values", className: "font-mono text-xs tabular-nums" },
 ];
 

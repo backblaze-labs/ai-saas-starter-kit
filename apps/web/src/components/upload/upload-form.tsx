@@ -152,6 +152,9 @@ export function UploadForm() {
         if (e.code === "file-too-large") {
           return `exceeds 100MB limit (${humanizeBytes(rejection.file.size)})`;
         }
+        if (e.code === "file-invalid-type") {
+          return "file type not supported";
+        }
         return e.message;
       });
       const message = errors.join(", ") || "File could not be added.";

@@ -3,7 +3,7 @@
 import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -63,7 +63,9 @@ export function DangerZone() {
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={onConfirm}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  // Destructive variant → white-on-red confirm that clears AA
+                  // in both themes (merged over AlertDialogAction's default).
+                  className={buttonVariants({ variant: "destructive" })}
                 >
                   Yes, empty it
                 </AlertDialogAction>

@@ -32,6 +32,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -78,6 +79,10 @@
   --accent: #eaeef2;
   --accent-foreground: #1f2328;
   --destructive: #cf222e;
+  /* Paired foreground for filled destructive surfaces (buttons). White clears
+     AA on the red bg in both themes — dark mode darkens the bg via
+     `dark:bg-destructive/60` in the button variant. */
+  --destructive-foreground: #ffffff;
   --border: #e3e8ee;
   --input: #e3e8ee;
   --ring: #0969da;
@@ -100,9 +105,15 @@
   /* Semantic accents */
   --success: #1a7f37;
   --success-subtle: #dafbe1;
-  --attention: #9a6700;
+  /* Darkened one step from #9a6700 so attention text clears AA with margin on
+     the pale --attention-subtle banner (~5.3:1 vs the old 4.5:1 threshold). */
+  --attention: #8a5d00;
   --attention-subtle: #fff8c5;
   --accent-subtle: #ddf4ff;
+
+  /* Brand accent — Backblaze red. Single source for the brand mark so a
+     rebrand touches one token, not scattered hex literals. */
+  --brand-b2: #e42c39;
 
   /* Elevation — gentle shadows, barely there at rest. */
   --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
@@ -149,6 +160,7 @@
   --accent: #212830;
   --accent-foreground: #f0f6fc;
   --destructive: #f85149;
+  --destructive-foreground: #ffffff;
   --border: #373e47;
   --input: #373e47;
   --ring: #4493f8;
@@ -173,6 +185,7 @@
   --attention: #d29922;
   --attention-subtle: rgba(187, 128, 9, 0.15);
   --accent-subtle: rgba(56, 139, 253, 0.15);
+  --brand-b2: #f8535e;
 
   --shadow-inset: inset 0 1px 0 rgba(240, 246, 252, 0.03);
   --shadow-card: 0 1px 2px rgba(1, 4, 9, 0.5);
@@ -411,6 +424,16 @@ a[data-slot="button"].border.bg-background:hover {
 :where(a, button, [role="button"], input, select, textarea):focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* Comfortable tap targets on touch devices without bloating pointer-driven
+   UI. Only coarse pointers (finger) get the 44px minimum; mouse/trackpad
+   keeps the compact Primer sizing. Apply to small icon/toolbar controls. */
+@media (pointer: coarse) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 .mono {

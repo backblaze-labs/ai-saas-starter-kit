@@ -74,7 +74,7 @@ export function Header() {
 
   return (
     <header className="flex h-14 items-center gap-3 bg-nav text-nav-foreground px-4 border-b border-white/10">
-      <SidebarTrigger className="h-8 w-8 text-nav-foreground/80 hover:text-nav-foreground hover:bg-white/10 rounded-md" />
+      <SidebarTrigger className="touch-target h-8 w-8 text-nav-foreground/80 hover:text-nav-foreground hover:bg-white/10 rounded-md" />
       <Breadcrumb>
         <BreadcrumbList className="text-sm">
           <BreadcrumbItem>
@@ -121,7 +121,7 @@ export function Header() {
               aria-label="Toggle color theme"
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-nav-foreground/80 hover:text-nav-foreground hover:bg-white/10 rounded-md"
+              className="touch-target h-8 w-8 text-nav-foreground/80 hover:text-nav-foreground hover:bg-white/10 rounded-md"
               onClick={() => setTheme(nextTheme)}
             >
               <Sun

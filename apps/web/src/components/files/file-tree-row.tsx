@@ -172,7 +172,7 @@ export function FileTreeRow({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0 opacity-100 transition-opacity sm:h-7 sm:w-7 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100 data-[state=open]:opacity-100"
+              className="touch-target h-8 w-8 shrink-0 opacity-100 transition-opacity sm:h-7 sm:w-7 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100 data-[state=open]:opacity-100"
               aria-label={`Open actions for ${file.filename}`}
               title={`Actions for ${file.filename}`}
             >
