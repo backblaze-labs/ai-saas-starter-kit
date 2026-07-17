@@ -173,36 +173,42 @@ Open `.env` in your editor and keep it visible. Then head to the [Backblaze B2 d
 
 **4. Set up Supabase (auth + database)**
 
-Authentication and the user database run on [Supabase](https://supabase.com). Use a **local** stack (default, zero cloud setup) or a **hosted** project — the app is identical either way, only the env vars differ.
+Auth and the user database run on [Supabase](https://supabase.com). Use a **local** stack (default, zero cloud setup) or a **hosted** project — the app is identical either way, only how the three env vars below get filled differs.
 
-*Local (recommended for development)* — needs Docker (e.g. [Colima](https://github.com/abiosoft/colima) or Docker Desktop) and the Supabase CLI (`brew install supabase/tap/supabase`):
+| Env var | What it is |
+|---------|-----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | your Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public anon/publishable key (browser-safe) |
+| `SUPABASE_SERVICE_ROLE_KEY` | service-role key — **server-only, never expose it to the browser** |
+
+**Local (recommended for development)** — needs Docker (e.g. [Colima](https://github.com/abiosoft/colima) or Docker Desktop) and the Supabase CLI (`brew install supabase/tap/supabase`):
 
 ```bash
-supabase start                       # boots Postgres + Auth + Studio + Mailpit
-node scripts/sync-supabase-env.mjs   # writes the local Supabase keys into .env
+supabase start                       # boots Postgres + Auth + Studio + Mailpit and applies migrations
+node scripts/sync-supabase-env.mjs   # writes all three vars above into .env for you
 ```
 
-`supabase start` applies the migrations in `supabase/migrations/` (a `profiles` table, a `roles` catalog, and RLS). Confirmation and magic-link emails are caught by Mailpit at `http://127.0.0.1:54324` — nothing is sent to a real inbox locally. **The first user to sign up becomes an admin.**
+Local sign-up confirmation and magic-link emails are caught by Mailpit at `http://127.0.0.1:54324` — nothing hits a real inbox. **The first user to sign up becomes an admin.**
 
-*Hosted (staging/production)* — create a project at [supabase.com](https://supabase.com), then **link the CLI before pushing** so `db push` knows which project to target:
+**Hosted (staging/production)** — create a project at [supabase.com](https://supabase.com), then **link the CLI before pushing** so `db push` knows which project to target:
 
 ```bash
 supabase login                                   # once per machine (opens the browser)
 supabase link --project-ref <your-project-ref>   # ref = your project URL subdomain, or Settings → General
-supabase db push                                 # applies the 4 migrations to the hosted DB
+supabase db push                                 # applies the migrations to the hosted DB
 ```
 
-Then copy **Project Settings → API** into `.env`: the project URL into `NEXT_PUBLIC_SUPABASE_URL`, the anon/publishable key into `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and the service-role key into `SUPABASE_SERVICE_ROLE_KEY` (**server-only — never expose it to the browser**). The backend reads the URL + anon key from the same `NEXT_PUBLIC_*` pair, so there is nothing to duplicate. Full walkthrough in [docs/deployment.md](docs/deployment.md). Swapping local ↔ hosted is config-only.
+Then copy the three vars from **Project Settings → API** into `.env` (project URL → `NEXT_PUBLIC_SUPABASE_URL`, anon/publishable key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`, service-role key → `SUPABASE_SERVICE_ROLE_KEY`). Full walkthrough in [docs/deployment.md](docs/deployment.md).
 
-> ⚠️ **Hosted admin:** the first user to sign up is auto-promoted to admin (handy locally). On a public hosted deploy, sign up yourself first, or remove the auto-promote branch in the migration and grant admin manually. See [docs/SECURITY.md](docs/SECURITY.md).
+> ⚠️ **Hosted admin:** the first user to sign up is auto-promoted to admin (handy locally). On a public hosted deploy, sign up yourself first, or grant admin manually — see [docs/SECURITY.md](docs/SECURITY.md).
 
 **5. Set up Stripe billing (optional)**
 
-Billing is powered by [Stripe](https://stripe.com). The app boots fine without it — the billing endpoints just return `503` and the file manager works unchanged — so you can skip this and come back later. To enable it (test mode; needs the [Stripe CLI](https://stripe.com/docs/stripe-cli)):
+Billing runs on [Stripe](https://stripe.com) and is optional — the billing endpoints return `503` until it's configured; the rest of the app is unaffected. To enable it in **test mode** you need the [Stripe CLI](https://docs.stripe.com/stripe-cli) (`brew install stripe/stripe-cli/stripe`):
 
 1. Copy your **test-mode** secret key (`sk_test_...`) from the [Stripe Dashboard](https://dashboard.stripe.com/test/apikeys) into `STRIPE_SECRET_KEY` in `.env`.
-2. Run `pnpm stripe:seed` — it creates the Pro/Team products + recurring prices and writes `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` into `.env` for you (idempotent; no `price_...` copy-paste).
-3. Run `pnpm stripe:listen` and copy the `whsec_...` it prints into `STRIPE_WEBHOOK_SECRET`. Leave it running — it forwards webhooks to your local API.
+2. Run `pnpm stripe:seed` — creates the Pro/Team prices and writes `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TEAM` into `.env` (idempotent).
+3. Run `pnpm stripe:listen` (leave it running) and copy the `whsec_...` it prints into `STRIPE_WEBHOOK_SECRET`.
 4. Restart `pnpm dev` (env is read at startup), then test checkout with card `4242 4242 4242 4242`.
 
 New to Stripe? The [step-by-step Stripe billing setup guide](docs/stripe-setup.md) walks through all of this with zero Stripe experience assumed.
