@@ -122,7 +122,7 @@ export default function BillingPage() {
           return (
             <Card
               key={plan.id}
-              className={isCurrent ? "border-primary" : ""}
+              className={isCurrent ? "card-standard border-primary" : "card-standard"}
               data-testid={`plan-card-${plan.id}`}
             >
               <CardHeader>
@@ -169,7 +169,7 @@ export default function BillingPage() {
         })}
       </div>
 
-      <Card data-testid="pro-preview">
+      <Card className="card-standard" data-testid="pro-preview">
         <CardHeader>
           <div className="flex items-center gap-2">
             {proPreview.isSuccess ? (

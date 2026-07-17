@@ -277,6 +277,16 @@
   transition: border-color var(--duration-short) var(--ease-productive),
               box-shadow var(--duration-short) var(--ease-productive);
 }
+/* Classic cards — padding and gap come from the Card itself, and the sub-slots
+   add none (the stock shadcn model). The neutralizer above zeroes those for the
+   sectioned-card convention (explicit per-slot padding + a divider), which would
+   otherwise leave classic-card content flush against the border. Opt back in to
+   the built-in spacing with `card-standard`. Higher specificity than the rule
+   above, both unlayered, so it wins; sectioned cards (no marker) are untouched. */
+[data-slot="card"].card-standard {
+  padding-block: 1.5rem;
+  gap: 1.5rem;
+}
 /* When a CardHeader carries a border-b, the generated class sets pb-6.
    Our explicit py-4 is the intended rhythm. */
 [data-slot="card-header"].border-b {

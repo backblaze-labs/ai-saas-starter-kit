@@ -21,7 +21,7 @@ export default function SignInPage() {
   return (
     <Suspense
       fallback={
-        <Card>
+        <Card className="card-standard">
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
             <CardDescription>Welcome back.</CardDescription>
@@ -46,7 +46,7 @@ function SignInInner() {
       : null);
 
   return (
-    <Card>
+    <Card className="card-standard">
       <CardHeader>
         <CardTitle>Sign in</CardTitle>
         <CardDescription>Welcome back.</CardDescription>

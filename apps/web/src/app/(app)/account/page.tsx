@@ -55,7 +55,7 @@ export default function AccountPage() {
         </p>
       </div>
 
-      <Card>
+      <Card className="card-standard">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -65,7 +65,7 @@ export default function AccountPage() {
             {isAdmin && <Badge>Admin</Badge>}
           </div>
         </CardHeader>
-        <form onSubmit={saveProfile}>
+        <form onSubmit={saveProfile} className="flex flex-col gap-6">
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -90,7 +90,7 @@ export default function AccountPage() {
         </form>
       </Card>
 
-      <Card>
+      <Card className="card-standard">
         <CardHeader>
           <CardTitle>Connection</CardTitle>
           <CardDescription>Your account connection status.</CardDescription>
@@ -111,7 +111,7 @@ export default function AccountPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="card-standard">
         <CardHeader>
           <CardTitle>Session</CardTitle>
           <CardDescription>Sign out of this device.</CardDescription>

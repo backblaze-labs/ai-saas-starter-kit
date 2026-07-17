@@ -31,7 +31,7 @@ export function RecentGenerationsTable() {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="border-b border-border py-4 px-5">
         <CardTitle className="text-sm font-semibold">Recent generations</CardTitle>
         <CardAction>
           <Link
@@ -43,7 +43,7 @@ export function RecentGenerationsTable() {
           </Link>
         </CardAction>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-5">
         {error ? (
           <ErrorState error={error} onRetry={() => refetch()} />
         ) : isLoading ? (

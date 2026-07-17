@@ -65,7 +65,7 @@ function GeneratedImage({ asset }: { asset: GeneratedAsset }) {
 
 function LockedCard() {
   return (
-    <Card data-testid="generate-locked">
+    <Card className="card-standard" data-testid="generate-locked">
       <CardHeader>
         <div className="flex items-center gap-2">
           <Lock className="h-5 w-5 text-muted-foreground" />
@@ -102,7 +102,7 @@ function JobCard({ job }: { job: GenerationJob }) {
           No image
         </div>
       )}
-      <CardContent className="space-y-2 pt-4">
+      <CardContent className="space-y-2 py-4">
         <p className="line-clamp-2 text-sm" title={job.prompt}>
           {job.prompt}
         </p>
@@ -161,8 +161,8 @@ export default function GeneratePage() {
         <LockedCard />
       ) : (
         <>
-          <Card>
-            <CardContent className="pt-6">
+          <Card className="card-standard">
+            <CardContent>
               <form onSubmit={onSubmit} data-testid="generate-form" className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="prompt">Prompt</Label>

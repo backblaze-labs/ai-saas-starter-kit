@@ -52,7 +52,7 @@ export default function SignUpPage() {
 
   if (sent) {
     return (
-      <Card>
+      <Card className="card-standard">
         <CardHeader className="items-center text-center">
           <MailCheck className="mb-2 h-8 w-8 text-primary" aria-hidden />
           <CardTitle>Check your email</CardTitle>
@@ -71,12 +71,12 @@ export default function SignUpPage() {
   }
 
   return (
-    <Card>
+    <Card className="card-standard">
       <CardHeader>
         <CardTitle>Create your account</CardTitle>
         <CardDescription>Start building on Backblaze B2.</CardDescription>
       </CardHeader>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="fullName">Full name</Label>
