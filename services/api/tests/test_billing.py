@@ -59,6 +59,26 @@ def _sub_event(
     }
 
 
+def _checkout_event(
+    *,
+    user_id: str = "u-1",
+    customer: str = "cus_test_1",
+    subscription: str | None = "sub_test_1",
+    event_id: str = "evt_checkout_1",
+) -> dict:
+    return {
+        "id": event_id,
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "client_reference_id": user_id,
+                "customer": customer,
+                "subscription": subscription,
+            }
+        },
+    }
+
+
 class FakeBillingStore:
     """In-memory stand-in for the supabase_billing repo."""
 
@@ -73,7 +93,17 @@ class FakeBillingStore:
         self.events.add(event_id)
 
     async def upsert_subscription(self, row: dict) -> None:
-        self.subs[row["user_id"]] = row
+        # Model PostgREST `resolution=merge-duplicates`: ON CONFLICT DO UPDATE
+        # sets ONLY the columns present in the payload. Columns the payload
+        # omits keep their prior value (on update) or the not-null DB default
+        # (on insert). Replacing the whole row here would hide the very clobber
+        # the checkout/subscription ordering fix is meant to prevent.
+        uid = row["user_id"]
+        # Not-null DB defaults from the subscriptions migration, applied only
+        # when the row is first inserted (see migration 20260708191053).
+        db_defaults = {"plan_id": "free", "status": "inactive", "cancel_at_period_end": False}
+        base = self.subs.get(uid) or db_defaults
+        self.subs[uid] = {**base, **row}
 
     async def get_subscription(self, user_id: str) -> dict | None:
         return self.subs.get(user_id)
@@ -160,6 +190,69 @@ async def test_webhook_deletion_downgrades_to_free(monkeypatch, fake_store):
     row = fake_store.subs["u-1"]
     assert row["plan_id"] == "free"
     assert row["status"] == "canceled"
+
+
+@pytest.mark.asyncio
+async def test_checkout_completed_does_not_clobber_active_subscription(
+    monkeypatch, fake_store
+):
+    """Regression: checkout.session.completed must not downgrade a row that
+    customer.subscription.created already set to an active paid tier.
+
+    Both events fire in the same instant on checkout and upsert the SAME
+    per-user row. Previously checkout.session.completed wrote plan_id/status
+    defaults ('free'/'incomplete') that clobbered the paid row whenever it was
+    processed last, leaving a paying customer locked on Free. It must now touch
+    only the Stripe id columns.
+    """
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+
+    # 1. customer.subscription.created lands first: row becomes pro/active.
+    sub_evt = _sub_event(event_type="customer.subscription.created", event_id="evt_sub")
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: sub_evt)
+    await billing_service.handle_webhook(b"{}", "sig")
+    assert fake_store.subs["u-1"]["plan_id"] == "pro"
+    assert fake_store.subs["u-1"]["status"] == "active"
+
+    # 2. checkout.session.completed is processed last: it must NOT downgrade.
+    monkeypatch.setattr(
+        stripe_client, "construct_event", lambda p, s: _checkout_event(event_id="evt_chk")
+    )
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "pro", "checkout.session.completed clobbered the paid tier"
+    assert row["status"] == "active", "checkout.session.completed clobbered the status"
+    # It still records the id mapping so the billing portal works immediately.
+    assert row["stripe_customer_id"] == "cus_test_1"
+    assert row["stripe_subscription_id"] == "sub_test_1"
+    # Entitlements derived from the row stay unlocked.
+    ent = await billing_service.get_entitlements("u-1")
+    assert ent.tier == "pro" and ent.can_generate is True
+
+
+@pytest.mark.asyncio
+async def test_checkout_completed_persists_mapping_without_unlocking(
+    monkeypatch, fake_store
+):
+    """checkout.session.completed on a brand-new user records the Stripe
+    customer/subscription ids (so the portal works) but must not itself grant a
+    paid tier — that is owned by the customer.subscription.* events. Until one
+    arrives the row keeps the not-null DB defaults and stays locked on Free.
+    """
+    monkeypatch.setattr(
+        stripe_client, "construct_event", lambda p, s: _checkout_event(event_id="evt_new")
+    )
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["stripe_customer_id"] == "cus_test_1"
+    assert row["stripe_subscription_id"] == "sub_test_1"
+    # DB defaults, not an unlock.
+    assert row["plan_id"] == "free"
+    assert row["status"] == "inactive"
+    ent = await billing_service.get_entitlements("u-1")
+    assert ent.tier == "free" and ent.can_generate is False
 
 
 # --- entitlements ----------------------------------------------------------

@@ -178,23 +178,31 @@ async def _sync_subscription(sub_obj: dict, *, deleted: bool) -> None:
 
 
 async def _sync_from_checkout(session_obj: dict) -> None:
-    """On checkout completion, persist the customer mapping.
+    """On checkout completion, persist ONLY the Stripe id mapping.
 
-    The plan tier itself is set by the customer.subscription.* events (which
-    carry the price + user_id metadata); here we just make sure the row exists
-    with the Stripe customer id so the billing portal works immediately.
+    Plan tier and status are owned exclusively by the customer.subscription.*
+    events (which carry the price + user_id metadata). This event fires in the
+    same instant and upserts the SAME per-user row, so it must NOT write plan_id
+    or status: doing so once let its stale 'free'/'incomplete' defaults clobber
+    the 'pro'/'active' row that customer.subscription.created had just written,
+    when the two events were processed out of order — leaving a paying user
+    locked on Free.
+
+    Writing only the id columns keeps the billing portal working immediately (it
+    needs the customer id) while leaving tier/status untouched: the merge-upsert
+    only overwrites the columns present here. On a brand-new row the not-null DB
+    defaults ('free'/'inactive') apply, so the user stays correctly locked until
+    the subscription event lands. Omitting stripe_subscription_id when the
+    session has none likewise preserves any id already on the row.
     """
     user_id = session_obj.get("client_reference_id")
     if not user_id:
         return
-    existing = await supabase_billing.get_subscription(user_id) or {}
     row = {
         "user_id": user_id,
-        "plan_id": existing.get("plan_id", "free"),
-        "status": existing.get("status", "incomplete"),
         "stripe_customer_id": session_obj.get("customer"),
-        "stripe_subscription_id": (
-            session_obj.get("subscription") or existing.get("stripe_subscription_id")
-        ),
     }
+    subscription_id = session_obj.get("subscription")
+    if subscription_id:
+        row["stripe_subscription_id"] = subscription_id
     await supabase_billing.upsert_subscription(row)

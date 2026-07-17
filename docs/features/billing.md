@@ -45,6 +45,11 @@ reusable plan-gating dependency that locks features behind a tier.
 - Stripe POSTs `customer.subscription.*` to `/billing/webhook` → signature
   verified → event deduped via `stripe_events` → subscription upserted into
   Supabase with the tier derived from the price id.
+- `checkout.session.completed` (fired in the same instant) writes **only** the
+  Stripe id mapping (`stripe_customer_id`, `stripe_subscription_id`) so the
+  portal works immediately. It never writes `plan_id`/`status` — tier and status
+  are owned solely by `customer.subscription.*`, so the two events can be
+  processed in either order without one downgrading the other.
 - `require_plan("pro")` reads the user's entitlements and 402s when the tier is
   below the minimum; the Billing page mirrors this with a locked/unlocked card.
 - **Manage billing** → `POST /billing/portal` → redirect to the Stripe portal.
@@ -58,6 +63,10 @@ reusable plan-gating dependency that locks features behind a tier.
 - Duplicate event id → no-op (`{"status":"duplicate"}`).
 - Unknown/unpriced plan on checkout → `400`.
 - `customer.subscription.deleted` → downgrades the user to `free` (status `canceled`).
+- Event ordering: `checkout.session.completed` and `customer.subscription.created`
+  race on the same per-user row. Because checkout writes only id columns (and the
+  merge-upsert overwrites only the columns it sends), a paid `pro`/`active` row is
+  never clobbered back to `free`/`incomplete` regardless of which lands last.
 
 ## UX States
 - Empty/Free: three plan cards, current plan = `FREE`, Pro preview locked.
@@ -69,7 +78,9 @@ reusable plan-gating dependency that locks features behind a tier.
   (+ `e2e/helpers/stripe-webhook.ts`).
 - Required cases: webhook signature verify (good/bad/missing secret), idempotent
   sync, deletion→downgrade, `require_plan` 402/allow, checkout 503-without-config,
-  and the live e2e webhook upgrade unlocking Pro.
+  `checkout.session.completed` not clobbering an active paid row (either ordering)
+  and recording the id mapping without unlocking, and the live e2e webhook upgrade
+  unlocking Pro.
 - Quick verify command: `pnpm test:api` (billing unit tests, hermetic).
 - Full verify command: `supabase start` + `pnpm dev`, then `pnpm test:e2e`.
   The webhook-upgrade e2e also needs `STRIPE_WEBHOOK_SECRET` +
