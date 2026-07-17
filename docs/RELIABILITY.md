@@ -43,7 +43,7 @@ The download counter and the `/metrics` counters are **in-process, per replica**
 ## Graceful Degradation
 
 - File listing returns empty list (not error) when B2 has no objects
-- Metadata extraction failures don't block upload (return partial metadata)
+- A failed browser→B2 upload leaves no server state; the client surfaces the error and the row stays retryable
 - Frontend shows skeleton states while loading, error states on failure
 
 ## Deployment

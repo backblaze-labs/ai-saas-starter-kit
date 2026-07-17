@@ -10,6 +10,7 @@ import type {
   FileUploadResponse,
   GenerationJob,
   Plan,
+  PresignedUpload,
   Role,
   Subscription,
   UploadStats,
@@ -202,15 +203,48 @@ export async function deleteFile(key: string) {
   );
 }
 
+/**
+ * Upload a file with a direct browser→B2 flow so the payload never transits the
+ * API. This is what lets uploads exceed a serverless request-body cap (Vercel's
+ * hard 4.5 MB): only tiny JSON control requests hit the API.
+ *
+ *   1. POST /upload/presign — the API validates the intent and returns a scoped,
+ *      type-bound presigned PUT URL.
+ *   2. PUT the bytes straight to B2 with that URL (progress tracks this step).
+ *   3. POST /upload/complete — the API confirms the object landed and re-checks
+ *      the size + magic-byte signature it couldn't see in transit.
+ */
 export async function uploadFile(
   file: File,
   onProgress?: (percent: number) => void
 ): Promise<FileUploadResponse> {
-  const headers = await authHeaders();
+  const presigned = await apiFetch<PresignedUpload>("/upload/presign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filename: file.name,
+      content_type: file.type || "application/octet-stream",
+      size_bytes: file.size,
+    }),
+  });
+
+  await putToStorage(presigned, file, onProgress);
+
+  return apiFetch<FileUploadResponse>("/upload/complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: presigned.key }),
+  });
+}
+
+/** PUT the raw file bytes to the presigned B2 URL, reporting upload progress. */
+function putToStorage(
+  presigned: PresignedUpload,
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    const formData = new FormData();
-    formData.append("file", file);
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable && onProgress) {
@@ -220,14 +254,11 @@ export async function uploadFile(
 
     xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(JSON.parse(xhr.responseText));
+        resolve();
       } else {
-        try {
-          const body = JSON.parse(xhr.responseText);
-          reject(new ApiError(body.detail || `Upload failed: ${xhr.status}`, xhr.status));
-        } catch {
-          reject(new ApiError(`Upload failed: ${xhr.status}`, xhr.status));
-        }
+        // B2 returns an XML error body; the customer just needs to retry, so
+        // keep the copy generic (the status is enough to debug from the logs).
+        reject(new ApiError(`Upload to storage failed: ${xhr.status}`, xhr.status));
       }
     });
 
@@ -236,11 +267,14 @@ export async function uploadFile(
       reject(new ApiError("Upload aborted", 0)),
     );
 
-    xhr.open("POST", `${API_BASE}/upload`);
-    for (const [name, value] of Object.entries(headers)) {
+    xhr.open(presigned.method, presigned.upload_url);
+    // Replay ONLY the signed headers (Content-Type). Never attach the Supabase
+    // bearer here: the presigned URL carries its own auth in the query string,
+    // and an unexpected Authorization header would break the signature.
+    for (const [name, value] of Object.entries(presigned.headers)) {
       xhr.setRequestHeader(name, value);
     }
-    xhr.send(formData);
+    xhr.send(file);
   });
 }
 

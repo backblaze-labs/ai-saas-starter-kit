@@ -15,7 +15,7 @@
   - REST API for file upload, listing, deletion
   - B2 S3 integration via boto3
   - Stripe billing: checkout/portal sessions, signature-verified webhook → Supabase sync, `require_plan` gate
-  - File metadata extraction (images, PDFs)
+  - Presigned direct browser→B2 uploads (the API signs + confirms; bytes never transit it)
   - Health check endpoint with B2 connectivity verification
   - Structured JSON logging with request tracing
   - Prometheus-format metrics endpoint
@@ -107,7 +107,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 
 - **Auth**: Browser -> Supabase (sign up/in) -> confirm via `/auth/confirm` -> cookie session; `proxy.ts` refreshes it per request and redirects unauthenticated users to `/signin`. API calls carry the token; the API validates it against Supabase (`repo/supabase_auth.py`).
 - **Billing**: Browser -> `POST /billing/checkout` -> Stripe Checkout (redirect) -> Stripe -> `POST /billing/webhook` (signature-verified) -> `service/billing.py` upserts the subscription into Supabase (service role). `require_plan(min_tier)` reads the derived entitlements and 402s below the required tier.
-- **Upload**: Browser -> `POST /upload` (multipart) -> API validates -> service orchestrates -> repo writes to B2 -> metadata extracted -> response
+- **Upload** (direct browser→B2): Browser -> `POST /upload/presign` -> API validates the intent + signs a type-bound PUT URL -> Browser `PUT`s the bytes straight to B2 -> Browser -> `POST /upload/complete` -> API confirms existence, true size, and magic-byte signature (deleting a spoofed object) -> response. Bytes never transit the API, so uploads aren't bounded by a serverless request-body cap.
 - **List**: Browser -> `GET /files` -> service calls repo -> returns file list
 - **Download**: Browser -> `GET /files/{key}/download` -> service validates key -> repo generates presigned URL -> browser downloads
 - **Delete**: Browser -> `DELETE /files/{key}` -> service validates key -> repo deletes from B2
@@ -138,7 +138,6 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 - [File Upload](docs/features/file-upload.md)
 - [File Browser](docs/features/file-browser.md)
 - [Dashboard](docs/features/dashboard.md)
-- [Metadata Extraction](docs/features/metadata-extraction.md)
 
 ## References
 

@@ -1,9 +1,14 @@
 import re
 
 from app.config import settings
-from app.repo import upload_file
-from app.service.metadata import extract_metadata
-from app.types import FileUploadResponse
+from app.repo import (
+    delete_file,
+    get_file_metadata,
+    get_object_head_bytes,
+    get_presigned_upload_url,
+)
+from app.service.keys import has_path_traversal
+from app.types import FileUploadResponse, PresignedUpload
 from app.types.formatting import humanize_bytes
 
 # Note: image/svg+xml is deliberately excluded. SVGs can embed <script>, so a
@@ -119,32 +124,48 @@ class UploadError(Exception):
         super().__init__(detail)
 
 
-def process_upload(
-    file_data: bytes,
+def upload_key_for(user_id: str, safe_name: str) -> str:
+    """The B2 object key a user's upload lands under.
+
+    Scoped to the caller (``uploads/{user_id}/``) so one user's uploads never
+    collide with or shadow another's, matching the file browser's per-user
+    scoping. B2 buckets are always versioned, so re-uploading the same name just
+    creates a new version — no duplicate rejection needed.
+    """
+    return f"uploads/{user_id}/{safe_name}"
+
+
+def prepare_upload(
     filename: str,
     content_type: str,
-    content_length: int | None = None,
+    size_bytes: int,
     *,
     user_id: str,
-) -> FileUploadResponse:
-    """Validate and process a file upload. Raises UploadError on failure.
+) -> PresignedUpload:
+    """Validate an upload intent and mint a scoped, type-bound presigned PUT URL.
 
-    The object is keyed under the caller's own prefix (``uploads/{user_id}/``)
-    so uploads are per-user isolated, matching the file browser's scoping.
+    The browser then uploads the bytes **straight to B2** with this URL, so the
+    payload never transits the API — that's what sidesteps a serverless
+    request-body cap (Vercel's 4.5 MB). Everything checkable without the bytes is
+    enforced here (type allow-list, extension/type consistency, declared size);
+    the magic-byte signature and true stored size are re-checked in
+    :func:`finalize_upload` once the object exists. Raises UploadError on
+    failure.
     """
     if not filename:
         raise UploadError("No filename provided")
 
-    if content_length and content_length > settings.max_file_size:
+    if size_bytes <= 0:
+        raise UploadError("Empty file")
+
+    if size_bytes > settings.max_file_size:
         raise UploadError(
             f"File too large. Max size: {humanize_bytes(settings.max_file_size)}",
             status_code=413,
         )
 
     if content_type not in ALLOWED_TYPES:
-        raise UploadError(
-            f"File type '{content_type}' not allowed", status_code=415
-        )
+        raise UploadError(f"File type '{content_type}' not allowed", status_code=415)
 
     safe_name = sanitize_filename(filename)
 
@@ -154,34 +175,83 @@ def process_upload(
             status_code=415,
         )
 
-    if len(file_data) == 0:
+    key = upload_key_for(user_id, safe_name)
+    upload_url = get_presigned_upload_url(key, content_type)
+    return PresignedUpload(
+        upload_url=upload_url,
+        key=key,
+        headers={"Content-Type": content_type},
+    )
+
+
+def _require_owned_upload(user_id: str, key: str) -> None:
+    """Reject an empty/traversing key, or one outside the caller's upload prefix.
+
+    Finalize only ever confirms objects the app itself wrote under
+    ``uploads/{user_id}/`` (generated media is created server-side, never
+    finalized by a client), so this is a single-prefix ownership gate.
+    """
+    if not key or has_path_traversal(key):
+        raise UploadError("Invalid file key")
+    if not key.startswith(upload_key_for(user_id, "")):
+        raise UploadError("Invalid file key", status_code=403)
+
+
+def finalize_upload(key: str, *, user_id: str) -> FileUploadResponse:
+    """Confirm a direct upload landed and passes the checks the sign step couldn't.
+
+    Called after the browser's PUT to B2 succeeds. Re-establishes the guarantees
+    the in-transit path used to provide, now that the bytes only ever lived in
+    B2:
+
+    * **Ownership** — the key must be under the caller's own ``uploads/`` prefix,
+      so a client can't finalize (and thereby surface) an object it doesn't own.
+    * **Existence** — a missing object means the PUT never completed (404).
+    * **True size** — re-check the stored size against the limit, in case the
+      client under-declared it at sign time.
+    * **Content signature** — Range-GET the header bytes and reject a payload
+      whose magic bytes don't match its declared type, deleting the bad object.
+
+    Raises UploadError on any failure.
+    """
+    _require_owned_upload(user_id, key)
+
+    metadata = get_file_metadata(key)
+    if metadata is None:
+        raise UploadError("Upload did not complete — object not found", status_code=404)
+
+    if metadata.size_bytes == 0:
+        delete_file(key)
         raise UploadError("Empty file")
 
-    if not matches_content_signature(file_data, content_type):
-        raise UploadError(
-            "File contents do not match the declared type", status_code=415
-        )
-
-    if len(file_data) > settings.max_file_size:
+    if metadata.size_bytes > settings.max_file_size:
+        delete_file(key)
         raise UploadError(
             f"File too large. Max size: {humanize_bytes(settings.max_file_size)}",
             status_code=413,
         )
 
-    # B2 buckets are always versioned — uploading the same key creates a new
-    # version automatically.  No duplicate rejection needed. The key is scoped
-    # to the caller so one user's uploads never collide with or shadow another's.
-    key = f"uploads/{user_id}/{safe_name}"
-    result = upload_file(file_data, key, content_type)
-    metadata = extract_metadata(file_data, safe_name, content_type)
+    if metadata.content_type not in ALLOWED_TYPES:
+        delete_file(key)
+        raise UploadError(
+            f"File type '{metadata.content_type}' not allowed", status_code=415
+        )
+
+    header = get_object_head_bytes(key)
+    if not matches_content_signature(header, metadata.content_type):
+        # The stored bytes lied about their type — drop the object so a spoofed
+        # payload never lingers in the bucket, then reject.
+        delete_file(key)
+        raise UploadError(
+            "File contents do not match the declared type", status_code=415
+        )
 
     return FileUploadResponse(
-        key=result.key,
-        filename=result.filename,
-        size_bytes=result.size_bytes,
-        size_human=result.size_human,
-        content_type=content_type,
-        uploaded_at=result.uploaded_at,
-        url=result.url,
-        metadata=metadata,
+        key=metadata.key,
+        filename=metadata.filename,
+        size_bytes=metadata.size_bytes,
+        size_human=metadata.size_human,
+        content_type=metadata.content_type,
+        uploaded_at=metadata.uploaded_at,
+        url=metadata.url,
     )

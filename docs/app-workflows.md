@@ -30,7 +30,8 @@ User journeys inside the application.
 - User navigates to `/upload`
 - Drops or selects files in the dropzone
 - Client validates file size (max 100MB) and type
-- Progress bar shows per-file upload status
+- Client gets a presigned URL from the API, then uploads the bytes **directly to B2** (they never pass through the API) and confirms
+- Progress bar shows per-file upload status (tracking the direct-to-B2 transfer)
 - On success: toast notification, green checkmark
 - On failure: red status icon with error message
 - User can clear completed uploads
@@ -43,7 +44,7 @@ User journeys inside the application.
 - Files displayed in tree view with folders and type-specific icons
 - Top-level folders auto-expand on load
 - Hover a file row to see action buttons (preview / download / delete)
-- **Preview**: opens dialog with image/PDF preview + metadata panel
+- **Preview**: opens dialog with image/PDF preview
 - **Download**: fetches presigned URL, browser downloads file
 - **Delete**: removes file from B2, row removed from tree, toast confirms
 - Empty bucket shows "No files found" with upload prompt
