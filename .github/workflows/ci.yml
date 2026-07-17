@@ -39,6 +39,13 @@ jobs:
 
       - name: Typecheck + build
         run: pnpm build
+        # next build prerenders the /signin and /signup pages, which construct a
+        # Supabase browser client. These NEXT_PUBLIC_* values are public by design
+        # (the anon key is publishable) and are only placeholders to let the build
+        # succeed as a gate — real values are injected at deploy time.
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
 
   api:
     name: API (ruff · pytest · structure)
