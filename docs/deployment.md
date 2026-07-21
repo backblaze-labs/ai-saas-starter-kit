@@ -18,11 +18,20 @@ This starter kit is two deployable services plus three managed dependencies:
      └────────────────┘          └──────────────────┘        └────────────────────┘
 ```
 
-The frontend is a static/edge Next.js app and belongs on Vercel; the backend is a
-long-running FastAPI process (it talks to B2 with server-only credentials and runs
-the Genblaze generation pipeline), so it needs a container/VM host — Railway,
-Render, or Fly.io all work. Everything else (auth DB, billing, storage) is a
-managed service you point env vars at.
+The frontend is a static/edge Next.js app and belongs on Vercel. The backend is a
+FastAPI app that talks to B2 with server-only credentials and runs the Genblaze
+generation pipeline. You can host it **two ways**:
+
+- **Split (default, §1–§6):** backend on a container/VM host — Railway, Render, or
+  Fly.io. This is the fully-supported path and the one the one-click button targets.
+- **All-Vercel (§7):** backend as a Vercel serverless function too, if your team is
+  already on Vercel (Pro/Enterprise). Newer variant, documented below.
+
+Everything else (auth DB, billing, storage) is a managed service you point env vars
+at. Note that **file uploads go from the browser straight to B2** via a presigned
+PUT (the API only signs the URL — see [features/file-upload.md](features/file-upload.md)),
+so the bucket needs a **CORS rule** for your frontend origin in *either* topology
+(§5).
 
 > Local development needs none of this — see the [README Quick Start](../README.md#quick-start).
 > This guide is only for shipping to a public URL.
@@ -160,18 +169,95 @@ application key scoped to that bucket. Generated media and uploads land under th
 same prefixes documented in [features/generation.md](features/generation.md) and
 [features/file-browser.md](features/file-browser.md).
 
+### Bucket CORS (required for direct browser uploads)
+
+Uploads go **from the browser straight to B2** via a presigned PUT, so that
+cross-origin request needs a bucket CORS rule allowing your frontend origin — in
+**both** topologies (split and all-Vercel). Without it, every upload fails with an
+opaque browser CORS error while downloads (query-signed) still work. Apply it with
+the bundled helper (uses the API venv's boto3; reads `B2_*` from your environment):
+
+```bash
+set -a; . ./.env; set +a        # load B2_* into the shell (or export them by hand)
+services/api/.venv/bin/python scripts/configure_b2_cors.py \
+  --origin https://your-app.vercel.app
+# pass --origin repeatedly for multiple frontends (e.g. a preview domain)
+```
+
+The rule allows `GET`/`PUT`/`HEAD` and the `Content-Type` header from the origins
+you list. **`put_bucket_cors` replaces the bucket's entire CORS config**, so if the
+bucket serves other apps, pass every origin they need too — or (recommended) give
+each deployment its own bucket.
+
 ## 6. Post-deploy checklist
 
 - [ ] Backend `/health` returns `200` (confirms B2 connectivity).
 - [ ] Frontend loads and `NEXT_PUBLIC_API_URL` points at the backend (no CORS errors in the console).
+- [ ] **Bucket CORS applied** (§5) — upload a file from the deployed frontend; it lands in `/files` with no browser CORS error.
 - [ ] Sign up → confirm email (hosted Supabase sends a real email; use a non-scanning address) → reach `/dashboard`.
 - [ ] `/billing` → Stripe Checkout → webhook flips the subscription row in Supabase.
 - [ ] `/generate` (on a Pro plan) produces an image under `generated/…` in B2 and it appears in `/files`.
 - [ ] `/admin` is reachable by your admin account and returns `403` for a normal user.
 
+## 7. Alternative: deploy everything on Vercel (all-in-one)
+
+The split topology above is the **default, fully-supported** path. If your team is
+already on Vercel (Pro/Enterprise), you can also run the **backend on Vercel too**,
+as a serverless FastAPI function — no separate container host.
+
+```
+┌─────────────────────┐        ┌───────────────────────────┐
+│  Next.js frontend   │  HTTPS │  FastAPI backend           │
+│  Vercel project A   │ ─────▶ │  Vercel project B          │
+│  root: apps/web     │        │  root: services/api        │
+└─────────────────────┘        │  (Fluid compute, Python)   │
+                               └─────────────┬─────────────┘
+              ┌─────────────────────────────┼─────────────────────────────┐
+              ▼                              ▼                             ▼
+       Supabase (auth+db)            Stripe (billing)            Backblaze B2 (storage)
+```
+
+**Why it works now** (verified against Vercel's docs):
+
+- Vercel deploys FastAPI as a Vercel Function on **Fluid compute** (the default),
+  Python 3.12, ASGI — it auto-detects `main.py:app`. See
+  `vercel.com/docs/frameworks/backend/fastapi`.
+- Fluid compute lifts the function timeout well past the app's 120s generation
+  backstop (300s on Pro by default; up to 30 min in beta), so `/generate` fits.
+- The **4.5 MB request-body cap** that would otherwise block uploads is a non-issue:
+  uploads already go **browser→B2 directly** via a presigned PUT (§5,
+  [features/file-upload.md](features/file-upload.md)) — the bytes never touch the
+  function.
+
+**Steps**
+
+1. **Backend project (B):** import the repo a second time; set **Root Directory** to
+   `services/api` and **Framework Preset** to **FastAPI**. `services/api/vercel.json`
+   sets the function `maxDuration`/`memory`.
+2. Set the **same backend env vars as §2** on this project (B2, Supabase, Stripe,
+   NVIDIA, `API_CORS_ORIGINS` = your frontend Vercel URL, `BILLING_*_URL`).
+3. **Bucket CORS (§5)** — required, since the browser→B2 PUT is cross-origin to your
+   frontend's Vercel domain.
+4. **Frontend project (A):** exactly as §1, but point `NEXT_PUBLIC_API_URL` at the
+   backend project's Vercel URL.
+5. **Stripe webhook (§4)** → the backend project's Vercel domain.
+
+**Serverless caveats**
+
+- `/metrics` and the download counter are **in-process**; Fluid compute instances are
+  ephemeral and per-instance, so those numbers reset/fragment (the counter write is
+  best-effort on a read-only FS — downloads still work). Externalize to Redis/DB for
+  real metrics (tracked in [tech-debt-tracker.md](exec-plans/tech-debt-tracker.md)).
+- **Bundle size:** Pillow + boto3 + stripe + `genblaze-*` is sizeable; confirm the
+  function builds within your plan's size limit on the first deploy. If it's too big,
+  split the generation slice into its own function or drop `genblaze-*` if you don't
+  use `/generate`.
+- `services/api/vercel.json` is a starting template — validate it on your first deploy
+  and adjust the function key if the FastAPI preset names the function differently.
+
 ## Related docs
 
 - [README.md](../README.md) — local setup
-- [infra/railway/README.md](../infra/railway/README.md) — backend host config
+- [infra/railway/README.md](../infra/railway/README.md) — backend host config (split)
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — system layout
 - [docs/SECURITY.md](SECURITY.md) — admin bootstrap, secret handling

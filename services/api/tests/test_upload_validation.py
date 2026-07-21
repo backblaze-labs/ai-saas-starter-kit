@@ -1,24 +1,59 @@
-"""Unit + integration tests for upload validation and content sniffing."""
+"""Unit + integration tests for the presigned direct-to-B2 upload flow.
+
+Uploads are two steps: ``prepare_upload`` validates the intent and mints a
+presigned PUT URL (bytes then go browser→B2, never through the API), and
+``finalize_upload`` confirms the object landed and re-checks what the sign step
+couldn't (true size + magic-byte signature).
+"""
+
+from datetime import UTC, datetime
 
 import pytest
 
 from app.service import upload as upload_service
 from app.service.upload import (
     UploadError,
+    finalize_upload,
     matches_content_signature,
+    prepare_upload,
     sanitize_filename,
     validate_extension_matches_type,
 )
-from app.types import FileUploadResponse
+from app.types import FileMetadata
 
 from .conftest import TEST_USER_ID
 
+FAKE_PRESIGNED_URL = "https://s3.example.backblazeb2.com/bucket/key?X-Amz-Signature=abc"
 
-def process_upload(*args, **kwargs):
-    """process_upload now requires a caller id; default it for the rejection
-    matrix, which fails before the key is ever built."""
-    kwargs.setdefault("user_id", TEST_USER_ID)
-    return upload_service.process_upload(*args, **kwargs)
+
+@pytest.fixture
+def mock_presign(monkeypatch):
+    """Stub the B2 presign so prepare_upload never builds a real S3 client."""
+    monkeypatch.setattr(
+        upload_service,
+        "get_presigned_upload_url",
+        lambda key, content_type, **kw: FAKE_PRESIGNED_URL,
+    )
+
+
+def _stored(
+    key: str,
+    *,
+    content_type: str = "text/plain",
+    size_bytes: int = 5,
+) -> FileMetadata:
+    """Build a FileMetadata as get_file_metadata would return it after a PUT."""
+    return FileMetadata(
+        key=key,
+        filename=key.rsplit("/", 1)[-1],
+        folder=key.rsplit("/", 1)[0] + "/",
+        size_bytes=size_bytes,
+        size_human=f"{size_bytes} B",
+        content_type=content_type,
+        uploaded_at=datetime.now(UTC),
+        url=None,
+    )
+
 
 # --- sanitize_filename ------------------------------------------------------
 
@@ -95,89 +130,173 @@ def test_matches_content_signature(data, content_type, expected):
     assert matches_content_signature(data, content_type) is expected
 
 
-# --- process_upload rejection matrix ----------------------------------------
+# --- prepare_upload rejection matrix (bytes-free validation) -----------------
 
 
-def test_rejects_oversized_content_length(monkeypatch):
+def test_prepare_rejects_missing_filename():
+    with pytest.raises(UploadError):
+        prepare_upload("", "text/plain", 5, user_id=TEST_USER_ID)
+
+
+def test_prepare_rejects_empty_declared_size():
+    with pytest.raises(UploadError) as exc:
+        prepare_upload("a.txt", "text/plain", 0, user_id=TEST_USER_ID)
+    assert "empty" in exc.value.detail.lower()
+
+
+def test_prepare_rejects_oversized_declared_size(monkeypatch):
     monkeypatch.setattr(upload_service.settings, "max_file_size", 10)
     with pytest.raises(UploadError) as exc:
-        process_upload(b"x", "a.txt", "text/plain", content_length=999)
+        prepare_upload("a.txt", "text/plain", 999, user_id=TEST_USER_ID)
     assert exc.value.status_code == 413
 
 
-def test_rejects_oversized_body(monkeypatch):
-    monkeypatch.setattr(upload_service.settings, "max_file_size", 5)
+def test_prepare_rejects_disallowed_type():
     with pytest.raises(UploadError) as exc:
-        process_upload(b"way too big", "a.txt", "text/plain", content_length=None)
-    assert exc.value.status_code == 413
-
-
-def test_rejects_disallowed_type():
-    with pytest.raises(UploadError) as exc:
-        process_upload(b"data", "a.exe", "application/x-msdownload", content_length=4)
+        prepare_upload("a.exe", "application/x-msdownload", 4, user_id=TEST_USER_ID)
     assert exc.value.status_code == 415
 
 
-def test_rejects_extension_mismatch():
+def test_prepare_rejects_extension_mismatch():
     with pytest.raises(UploadError) as exc:
-        process_upload(b"data", "a.png", "text/plain", content_length=4)
+        prepare_upload("a.png", "text/plain", 4, user_id=TEST_USER_ID)
     assert exc.value.status_code == 415
 
 
-def test_rejects_content_signature_mismatch():
-    # A .png name and declared image/png, but the bytes aren't a PNG.
+def test_prepare_returns_scoped_type_bound_presign(mock_presign):
+    result = prepare_upload("photo.png", "image/png", 1234, user_id=TEST_USER_ID)
+    assert result.key == f"uploads/{TEST_USER_ID}/photo.png"
+    assert result.upload_url == FAKE_PRESIGNED_URL
+    assert result.method == "PUT"
+    # The Content-Type is handed back so the browser replays exactly what was
+    # signed — anything else and B2 rejects the PUT.
+    assert result.headers == {"Content-Type": "image/png"}
+
+
+# --- finalize_upload --------------------------------------------------------
+
+
+def test_finalize_happy_path_returns_basic_metadata(monkeypatch):
+    key = f"uploads/{TEST_USER_ID}/report.txt"
+    monkeypatch.setattr(upload_service, "get_file_metadata", lambda k: _stored(k))
+    monkeypatch.setattr(upload_service, "get_object_head_bytes", lambda k, **kw: b"hello")
+
+    result = finalize_upload(key, user_id=TEST_USER_ID)
+    assert result.key == key
+    assert result.filename == "report.txt"
+    assert result.size_bytes == 5
+    # Rich metadata (md5/exif/…) is gone — direct upload never sees the bytes.
+    assert not hasattr(result, "metadata")
+
+
+def test_finalize_rejects_key_outside_caller_prefix(monkeypatch):
+    called = {"head": False}
+    monkeypatch.setattr(
+        upload_service,
+        "get_file_metadata",
+        lambda k: called.__setitem__("head", True) or _stored(k),
+    )
     with pytest.raises(UploadError) as exc:
-        process_upload(b"not a real png", "a.png", "image/png", content_length=14)
-    assert exc.value.status_code == 415
+        finalize_upload("uploads/someone-else/report.txt", user_id=TEST_USER_ID)
+    assert exc.value.status_code == 403
+    # Ownership is checked before any B2 round-trip.
+    assert called["head"] is False
 
 
-def test_rejects_empty_file():
+@pytest.mark.parametrize("bad_key", ["", "uploads/../secret", f"uploads/{TEST_USER_ID}/\x00"])
+def test_finalize_rejects_traversal_key(bad_key):
     with pytest.raises(UploadError):
-        process_upload(b"", "a.txt", "text/plain", content_length=0)
+        finalize_upload(bad_key, user_id=TEST_USER_ID)
 
 
-# --- uploads_total metric increments ----------------------------------------
+def test_finalize_missing_object_returns_404(monkeypatch):
+    monkeypatch.setattr(upload_service, "get_file_metadata", lambda k: None)
+    with pytest.raises(UploadError) as exc:
+        finalize_upload(f"uploads/{TEST_USER_ID}/gone.txt", user_id=TEST_USER_ID)
+    assert exc.value.status_code == 404
+
+
+def test_finalize_deletes_and_rejects_signature_mismatch(monkeypatch):
+    key = f"uploads/{TEST_USER_ID}/a.png"
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        upload_service, "get_file_metadata", lambda k: _stored(k, content_type="image/png")
+    )
+    # Declared image/png but the stored header bytes are HTML — a spoof.
+    monkeypatch.setattr(
+        upload_service, "get_object_head_bytes", lambda k, **kw: b"<html>nope"
+    )
+    monkeypatch.setattr(upload_service, "delete_file", lambda k: deleted.append(k))
+
+    with pytest.raises(UploadError) as exc:
+        finalize_upload(key, user_id=TEST_USER_ID)
+    assert exc.value.status_code == 415
+    assert deleted == [key]  # the bad object was removed, not left lingering
+
+
+def test_finalize_deletes_and_rejects_oversized_stored_file(monkeypatch):
+    key = f"uploads/{TEST_USER_ID}/big.txt"
+    deleted: list[str] = []
+    monkeypatch.setattr(upload_service.settings, "max_file_size", 10)
+    monkeypatch.setattr(
+        upload_service, "get_file_metadata", lambda k: _stored(k, size_bytes=999)
+    )
+    monkeypatch.setattr(upload_service, "delete_file", lambda k: deleted.append(k))
+
+    with pytest.raises(UploadError) as exc:
+        finalize_upload(key, user_id=TEST_USER_ID)
+    assert exc.value.status_code == 413
+    assert deleted == [key]
+
+
+# --- endpoints --------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_successful_upload_increments_uploads_metric(auth_client, monkeypatch):
+async def test_presign_requires_auth(client):
+    resp = await client.post(
+        "/upload/presign",
+        json={"filename": "a.txt", "content_type": "text/plain", "size_bytes": 5},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_complete_requires_auth(client):
+    resp = await client.post("/upload/complete", json={"key": "uploads/x/a.txt"})
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_presign_endpoint_returns_scoped_url(auth_client, monkeypatch):
+    monkeypatch.setattr(
+        upload_service,
+        "get_presigned_upload_url",
+        lambda key, content_type, **kw: FAKE_PRESIGNED_URL,
+    )
+    resp = await auth_client.post(
+        "/upload/presign",
+        json={"filename": "a.txt", "content_type": "text/plain", "size_bytes": 5},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["key"] == f"uploads/{TEST_USER_ID}/a.txt"
+    assert body["upload_url"] == FAKE_PRESIGNED_URL
+    assert body["headers"]["Content-Type"] == "text/plain"
+
+
+@pytest.mark.asyncio
+async def test_complete_endpoint_increments_uploads_metric(auth_client, monkeypatch):
     from app.runtime import metrics
 
     monkeypatch.setattr(metrics, "_upload_count", 0)
-    captured: dict = {}
+    key = f"uploads/{TEST_USER_ID}/a.txt"
+    monkeypatch.setattr(upload_service, "get_file_metadata", lambda k: _stored(k))
+    monkeypatch.setattr(upload_service, "get_object_head_bytes", lambda k, **kw: b"hello")
 
-    def fake_upload_file(file_data, key, content_type):
-        captured["key"] = key
-        return FileUploadResponse(
-            key=key,
-            filename="a.txt",
-            size_bytes=len(file_data),
-            size_human="5 B",
-            content_type=content_type,
-            uploaded_at="2026-02-14T00:00:00Z",
-            url=None,
-            metadata=None,
-        )
-
-    monkeypatch.setattr(upload_service, "upload_file", fake_upload_file)
-    monkeypatch.setattr(
-        upload_service, "extract_metadata", lambda file_data, filename, content_type: None
-    )
-
-    resp = await auth_client.post(
-        "/upload", files={"file": ("a.txt", b"hello", "text/plain")}
-    )
+    resp = await auth_client.post("/upload/complete", json={"key": key})
     assert resp.status_code == 200
-    # The write landed under the caller's own prefix, not a flat uploads/.
-    assert captured["key"] == f"uploads/{TEST_USER_ID}/a.txt"
+    assert resp.json()["key"] == key
 
     metrics_resp = await auth_client.get("/metrics")
     assert "uploads_total 1" in metrics_resp.text
-
-
-@pytest.mark.asyncio
-async def test_upload_requires_auth(client):
-    resp = await client.post(
-        "/upload", files={"file": ("a.txt", b"hello", "text/plain")}
-    )
-    assert resp.status_code == 401

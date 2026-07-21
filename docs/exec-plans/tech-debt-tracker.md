@@ -18,22 +18,23 @@ Nitpicks surfaced by the verify pass on the file surface (logged, not blocking; 
 | Description | Impact | Proposed Resolution | Priority |
 |---|---|---|---|
 | Download counter & `/metrics` not durable across restart/replicas | Counter resets on redeploy (ephemeral FS); both fragment across replicas | Back the counter with a shared store (Redis/DB); label/aggregate metrics per instance. Now isolated in `repo/counter.py` and documented in RELIABILITY.md | Medium |
-| Upload buffers the whole file in memory | ~3× file size RAM per upload; large files strain the server (event loop no longer blocked, but memory unbounded) | Stream to a temp file, or S3 multipart above a size threshold | Medium |
 | `get_upload_activity` re-materializes `FileMetadata` for every object just to bucket dates | Wasted O(n) CPU per `/files/stats/activity` (scan is cached; materialization is not) | Aggregate from raw listing dicts like `get_upload_stats` does | Low |
+| Upload signature check is a second B2 round-trip (Range GET at `/upload/complete`) | One extra request per upload; a client that PUTs then never calls `/upload/complete` leaves an unconfirmed, unvalidated object in the bucket until it's overwritten or the bucket TTL/cleanup removes it | Accept it (cost is small and objects are per-user scoped), or add a periodic sweep of stale unconfirmed `uploads/{uid}/` objects | Low |
 | Frontend has only pure-logic unit tests; no component/render tests, and e2e only checks routing | UI states (loading/error/empty) and the real upload→delete journey are unverified | Add jsdom + @testing-library/react render tests; a fixture-driven upload e2e | Medium |
 | Allowed file types hardcoded in `service/upload.py` | Reuse friction — each new app edits source to change accepted types | Make `ALLOWED_TYPES` / `MIME_EXTENSION_MAP` env-configurable | Low |
 | No `docker-compose.yaml` | Manual venv + dual-process startup slows first run | Add compose with `web` + `api` services and Dockerfiles | Low |
 | `api-client.ts` hand-synced to FastAPI | Endpoint drift between client and server | Note an OpenAPI codegen strategy or link the spec | Low |
 | No dedicated connection-status banner | Offline only surfaced reactively per failed query | Add a global connectivity banner (route + global error boundaries already exist) | Low |
-| Rich file metadata not surfaced in the browser | Extracted at upload and returned in the `POST /upload` response but not persisted, so `GET /files-by-key/metadata` and the browser preview show basic metadata (size, type, key, date) only | Persist rich metadata at upload (e.g. in the `files` table) + return it from `GET /files-by-key/metadata`, then render it in the preview dialog | Low |
 | Settings page is a non-persisting preview & Danger Zone "Empty bucket" is disabled | Users can't save preferences or empty the bucket from the UI — both are marked "preview"/"not available in this starter" (no misleading fake-success) rather than wired | Persist preferences (a `settings` table or `profiles` columns) + implement a prefix-scoped bucket-empty behind a typed confirm | Low |
 
 ## Resolved
 
 | Description | Resolution |
 |---|---|
+| Upload buffered the whole file in memory (~3× file size RAM per upload) | Uploads now go browser→B2 directly via a presigned PUT; the API never holds the bytes |
+| Rich file metadata (checksums, EXIF, PDF info) extracted at upload but never persisted or surfaced (dead `FileMetadataPanel`, `service/metadata.py`) | Removed — direct-to-B2 upload means the API never sees the bytes, so server-side extraction isn't possible; the browser shows basic metadata (size, type, key, date). Would return only as post-upload async processing if ever needed |
 | Blocking boto3 in `async def` handlers froze the single event loop | B2 handlers are sync `def` (Starlette threadpool); upload offloads via `run_in_threadpool` |
-| Full-bucket scan on every list/stats/activity request, uncached | Short-TTL cache in `repo/b2_client._list_all_objects`, invalidated on upload/delete |
+| Full-bucket scan on every list/stats/activity request, uncached | Short-TTL single-flight cache in `repo/b2_listing.list_all_objects`, invalidated on upload/delete |
 | No CI — quality gates ran only when a human remembered | `.github/workflows/ci.yml` runs web + API gates on PR and push to `main` |
 | SVG stored-XSS; declared MIME trusted; unused `python-magic` dep | Dropped SVG from allow-list; added magic-byte signature check; removed dead `python-magic` |
 | No rate limiting → DoS + B2 cost amplification | Per-IP fixed-window limiter (`runtime/ratelimit.py`), read/write budgets |

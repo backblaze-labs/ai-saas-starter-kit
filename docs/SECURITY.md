@@ -34,12 +34,26 @@ Security principles and implementation for the ai-saas-starter-kit.
 
 ## Upload Validation
 
-- Filename sanitization: path traversal, null bytes, unsafe chars stripped
-- MIME/extension consistency check against allowlist
-- Chunked streaming with size enforcement (100MB default)
-- Content-type allowlist (images, PDFs, text, archives, audio/video). **SVG is excluded** — it can embed `<script>` that executes when served from a public bucket URL (stored XSS). Re-add only with server-side sanitization.
-- **Magic-byte signature check**: for binary types, the leading bytes must match the declared content type, so a script payload can't masquerade as `image/png`. Text-like types (plain/CSV/JSON) have no signature and skip this check.
-- Empty file rejection
+Uploads go **directly from the browser to B2** via a presigned PUT (the bytes
+never transit the API), so validation is split across the two control requests:
+
+- **At `POST /upload/presign` (before signing):** filename sanitization (path
+  traversal, null bytes, unsafe chars stripped); MIME/extension consistency
+  check; content-type allowlist (images, PDFs, text, archives, audio/video) —
+  **SVG is excluded** (it can embed `<script>` that executes when served from a
+  public bucket URL → stored XSS; re-add only with server-side sanitization);
+  declared size enforcement (>0 and ≤ 100MB default). The presigned URL is bound
+  to the exact object key **and** `Content-Type`, so the browser can't store a
+  different type than was validated.
+- **At `POST /upload/complete` (after the object exists):** ownership check (the
+  key must be under the caller's own `uploads/` prefix, else `403` before any B2
+  call); **true stored size** re-checked against the limit (`413`); and a
+  **magic-byte signature re-check** — the API Range-GETs the object header and,
+  for binary types, requires the leading bytes to match the declared content type
+  so a script payload can't masquerade as `image/png`. A mismatch **deletes** the
+  object and returns `415`. Text-like types (plain/CSV/JSON) have no signature
+  and skip this check.
+- Empty file rejection (declared size 0, or 0 bytes stored).
 
 ## Rate Limiting
 
@@ -48,7 +62,7 @@ Security principles and implementation for the ai-saas-starter-kit.
 
 ## File Surface: Authentication & Per-User Isolation
 
-- **Every file route is authenticated.** `GET /files`, `GET /files/stats`, `GET /files/stats/activity`, the `/files-by-key/*` and legacy `/files/{key}` reads/deletes, and `POST /upload` all depend on `get_current_user`; a missing or invalid bearer token returns `401`. (Rate limiting runs ahead of auth, so abusive unauthenticated traffic is still throttled per IP.)
+- **Every file route is authenticated.** `GET /files`, `GET /files/stats`, `GET /files/stats/activity`, the `/files-by-key/*` and legacy `/files/{key}` reads/deletes, and both upload steps (`POST /upload/presign`, `POST /upload/complete`) all depend on `get_current_user`; a missing or invalid bearer token returns `401`. (Rate limiting runs ahead of auth, so abusive unauthenticated traffic is still throttled per IP.)
 - **Reads/listings are scoped to the caller.** Listings and stats cover only the union of the caller's `uploads/{user_id}/` and `generated/{user_id}/` prefixes — never a bucket-wide scan — so one tenant cannot see another's uploads or generated media.
 - **Writes are scoped to the caller.** Uploaded objects are keyed under `uploads/{user_id}/…`, not a flat `uploads/…`, so users' uploads never collide with or shadow each other.
 - **Ownership is enforced on key-addressed ops.** `metadata`/`download`/`preview`/`delete` for a key outside the caller's own prefixes return `404` — not `403` — so a guessed key never confirms another user's object exists, and no user can read or delete another user's object.

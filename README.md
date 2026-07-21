@@ -242,6 +242,8 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 
 ## Deploy
 
+Two topologies, both documented in **[docs/deployment.md](docs/deployment.md)**: **split** (frontend on Vercel + backend on Railway/Render/Fly — the default, one-click below) or **all-Vercel** (backend as a Vercel serverless function too, for teams already on Vercel).
+
 Deploy the **frontend** to Vercel in one click, then host the **backend** (FastAPI) on Railway, Render, or Fly.io:
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbackblaze-labs%2Fai-saas-starter-kit&root-directory=apps%2Fweb&project-name=ai-saas-starter-kit&repository-name=ai-saas-starter-kit&env=NEXT_PUBLIC_API_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY&envDescription=The%20frontend%20needs%20your%20backend%20API%20origin%20plus%20your%20Supabase%20project%20URL%20and%20anon%20key&envLink=https%3A%2F%2Fgithub.com%2Fbackblaze-labs%2Fai-saas-starter-kit%2Fblob%2Fmain%2Fdocs%2Fdeployment.md)
@@ -256,10 +258,9 @@ Full production topology — Vercel + Railway/Render/Fly, hosted Supabase, Strip
 - [Billing](docs/features/billing.md) — Stripe Checkout + Billing Portal, Free/Pro/Team plans, webhook→Supabase sync, and plan-gating (`require_plan`)
 - [AI Image Generation](docs/features/generation.md) — text-to-image (NVIDIA NIM `flux.1-dev`) via the Genblaze SDK → B2 with a SHA-256 provenance manifest; Pro-gated, and outputs land in the file manager
 - [Admin Console](docs/features/admin.md) — filterable, paginated DataGrids (users, subscriptions, jobs, files, provider runs) + an audit log; admin-gated
-- [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress
+- [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress, sent **directly browser→B2** via a presigned PUT (no 4.5 MB serverless body cap)
 - [File Browser](docs/features/file-browser.md) — list, preview, download, delete files
 - [Dashboard](docs/features/dashboard.md) — stats cards, upload chart, recent uploads
-- [Upload Metadata](docs/features/metadata-extraction.md) — the upload API returns rich metadata (checksums, image dimensions, EXIF, PDF info) in its response; the file browser surfaces basic metadata (size, type, upload date)
 - [Design System](docs/design-system.md) — tokens, primitives, AI elements, the blaze generating loader, and inline `ErrorState` / `EmptyState` patterns. Live preview at `/design`.
 - Inline error handling — fetch failures surface *what's wrong* (API offline, 401, 5xx) and offer a Retry, instead of silently rendering empty state.
 - Single-source config — one `.env` at the repo root powers both API and web app, validated at startup so misconfig fails fast with a readable message.
