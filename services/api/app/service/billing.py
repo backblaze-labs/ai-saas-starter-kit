@@ -165,7 +165,13 @@ async def handle_webhook(payload: bytes, sig_header: str) -> dict:
 
     obj = event["data"]["object"]
     if event_type in _SUBSCRIPTION_EVENTS:
-        await _sync_subscription(obj, deleted=event_type.endswith("deleted"))
+        # event["created"] (unix seconds) orders subscription events; a staler
+        # one is rejected DB-side (see repo.apply_subscription_event).
+        await _sync_subscription(
+            obj,
+            deleted=event_type.endswith("deleted"),
+            event_created_at=event.get("created"),
+        )
     elif event_type == "checkout.session.completed":
         await _sync_from_checkout(obj)
 
@@ -174,8 +180,13 @@ async def handle_webhook(payload: bytes, sig_header: str) -> dict:
     return {"status": "processed", "id": event_id, "type": event_type}
 
 
-async def _sync_subscription(sub_obj: dict, *, deleted: bool) -> None:
-    """Upsert the per-user subscription row from a Stripe Subscription object."""
+async def _sync_subscription(
+    sub_obj: dict, *, deleted: bool, event_created_at: int | None
+) -> None:
+    """Upsert the per-user subscription row from a Stripe Subscription object.
+
+    `event_created_at` is the enclosing Stripe event's `created` timestamp; it
+    lets the repo reject an out-of-order (staler) event DB-side."""
     user_id = (sub_obj.get("metadata") or {}).get("user_id")
     if not user_id:
         logger.warning(
@@ -214,7 +225,7 @@ async def _sync_subscription(sub_obj: dict, *, deleted: bool) -> None:
         "current_period_end": _iso_from_unix(period_end),
         "cancel_at_period_end": bool(sub_obj.get("cancel_at_period_end", False)),
     }
-    await supabase_billing.upsert_subscription(row)
+    await supabase_billing.apply_subscription_event(row, event_created_at=event_created_at)
 
 
 async def _sync_from_checkout(session_obj: dict) -> None:

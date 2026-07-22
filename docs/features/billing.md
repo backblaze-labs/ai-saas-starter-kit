@@ -74,9 +74,26 @@ reusable plan-gating dependency that locks features behind a tier.
   race on the same per-user row. Because checkout writes only id columns (and the
   merge-upsert overwrites only the columns it sends), a paid `pro`/`active` row is
   never clobbered back to `free`/`incomplete` regardless of which lands last.
-  A stale/retried `customer.subscription.updated` overwriting newer state is a
-  narrower remaining gap (needs an event-timestamp guard + a schema column) —
-  tracked in the tech-debt tracker, not yet closed.
+- Out-of-order subscription events: Stripe does not guarantee ordered delivery, so
+  a stale/retried `customer.subscription.*` can arrive after a newer one. Each
+  subscription event carries the Stripe **event** `created` (unix seconds), stored
+  as `subscriptions.last_event_created_at`. The webhook applies events through the
+  `apply_subscription_event` Postgres function (via PostgREST RPC), whose
+  `ON CONFLICT` branch fires only when the incoming event is same-or-newer (or
+  ordering is impossible — first event on the row, or a missing timestamp). A
+  staler event is a no-op DB-side, so the freshness check is atomic and cannot
+  race under concurrent deliveries (no read-compare-write in the API). The
+  checkout id-only path keeps its plain merge-upsert. `event.created` is
+  second-granular and the compare is `>=`, so two genuinely distinct events in
+  the *same second* are last-delivered-wins — an inherent limit, acceptable
+  because same-second state flips are rare and idempotent retries are caught by
+  `stripe_events`.
+- **Applying this schema change:** the `last_event_created_at` column and
+  `apply_subscription_event` function live in the consolidated init migration
+  (`00000000000000_init.sql`). A DB that already ran an earlier `init.sql` will
+  **not** pick them up from `supabase start` / `supabase db push` (that version
+  is recorded as applied) — run `supabase db reset` locally, or reset/recreate
+  the hosted DB, after pulling. A fresh clone gets them on first `supabase start`.
 
 ## UX States
 - Empty/Free: three plan cards, current plan = `FREE`, Pro preview locked.
@@ -89,8 +106,12 @@ reusable plan-gating dependency that locks features behind a tier.
 - Required cases: webhook signature verify (good/bad/missing secret), idempotent
   sync, deletion→downgrade, `require_plan` 402/allow, checkout 503-without-config,
   `checkout.session.completed` not clobbering an active paid row (either ordering)
-  and recording the id mapping without unlocking, and the live e2e webhook upgrade
-  unlocking Pro.
+  and recording the id mapping without unlocking, out-of-order subscription events
+  (stale=no-op, newer applies, first-on-new-row applies, missing timestamp applies)
+  plus the RPC-payload shape for `apply_subscription_event`, and the live e2e
+  webhook upgrade unlocking Pro. NOTE: the SQL freshness guard itself is not
+  executed by the hermetic pytest suite (no live Postgres) — it is covered by the
+  RPC-payload assertion and manual/e2e DB runs.
 - Quick verify command: `pnpm test:api` (billing unit tests, hermetic).
 - Full verify command: `supabase start` + `pnpm dev`, then `pnpm test:e2e`.
   The webhook-upgrade e2e also needs `STRIPE_WEBHOOK_SECRET` +

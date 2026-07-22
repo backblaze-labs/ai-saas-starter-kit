@@ -217,6 +217,13 @@ create table if not exists public.subscriptions (
   stripe_subscription_id text,
   current_period_end     timestamptz,
   cancel_at_period_end   boolean not null default false,
+  -- Stripe EVENT.created (unix seconds) of the last subscription event applied
+  -- to this row. Used to reject out-of-order webhooks: Stripe does not
+  -- guarantee ordered delivery, so a stale/retried customer.subscription.*
+  -- can arrive after a newer one. NOT the Subscription object's own `created`
+  -- (that is constant for the life of the subscription and useless for
+  -- ordering). NULL until the first subscription event lands.
+  last_event_created_at  bigint,
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now()
 );
@@ -230,6 +237,69 @@ comment on table public.subscriptions is
 create trigger subscriptions_set_updated_at
   before update on public.subscriptions
   for each row execute function public.set_updated_at();
+
+-- Out-of-order-safe subscription upsert ---------------------------------------
+-- Stripe does not guarantee ordered webhook delivery, so a stale or retried
+-- customer.subscription.* event can arrive AFTER a newer one and overwrite
+-- current state with stale data. This function makes the freshness check
+-- ATOMIC in the DB (not a read-compare-write in the API, which would race
+-- under concurrent webhook deliveries): the ON CONFLICT branch applies only
+-- when the incoming event is at least as new as the last one applied to the
+-- row. A staler event is silently a no-op.
+--
+-- p_event_created_at is the Stripe EVENT's `created` (unix seconds). NULL is
+-- treated as "cannot order — apply it" so a missing timestamp never drops an
+-- update (idempotency is still handled separately by stripe_events). Caveat: a
+-- NULL-timestamped event also WRITES NULL back to last_event_created_at,
+-- re-disarming the guard until the next non-NULL event lands — harmless for
+-- Stripe (event.created is always set) but relevant to any adapter that omits
+-- it. Ordering is second-granular, and the comparison is `>=`, so two distinct
+-- events in the SAME second are last-delivered-wins (an inherent limit, not a
+-- regression — same-second state flips are rare and retries are idempotent).
+--
+-- Called by the webhook path via PostgREST RPC with the service role. It is
+-- SECURITY INVOKER (runs with the caller's privileges), NOT definer: the write
+-- to public.subscriptions therefore succeeds only for a role that actually
+-- holds insert/update on that table (service_role). A DEFINER function here
+-- would be an entitlement-forgery hole — PostgREST exposes public-schema RPCs
+-- and Postgres grants EXECUTE to PUBLIC by default, so as definer any anon
+-- caller could forge a paid plan for an arbitrary p_user_id. As invoker, anon/
+-- authenticated (which lack the table grant) get permission denied; the
+-- explicit REVOKE below removes even EXECUTE from PUBLIC for defense in depth.
+create or replace function public.apply_subscription_event(
+  p_user_id                uuid,
+  p_plan_id                text,
+  p_status                 text,
+  p_stripe_customer_id     text,
+  p_stripe_subscription_id text,
+  p_current_period_end     timestamptz,
+  p_cancel_at_period_end   boolean,
+  p_event_created_at       bigint
+)
+returns void
+language sql
+security invoker
+as $$
+  insert into public.subscriptions as s (
+    user_id, plan_id, status, stripe_customer_id, stripe_subscription_id,
+    current_period_end, cancel_at_period_end, last_event_created_at
+  )
+  values (
+    p_user_id, p_plan_id, p_status, p_stripe_customer_id, p_stripe_subscription_id,
+    p_current_period_end, p_cancel_at_period_end, p_event_created_at
+  )
+  on conflict (user_id) do update set
+    plan_id                = excluded.plan_id,
+    status                 = excluded.status,
+    stripe_customer_id     = excluded.stripe_customer_id,
+    stripe_subscription_id = excluded.stripe_subscription_id,
+    current_period_end     = excluded.current_period_end,
+    cancel_at_period_end   = excluded.cancel_at_period_end,
+    last_event_created_at  = excluded.last_event_created_at
+  where s.last_event_created_at is null              -- row has no applied event yet
+     or excluded.last_event_created_at is null       -- incoming event is unordered
+     or excluded.last_event_created_at >= s.last_event_created_at;  -- same-or-newer wins
+$$;
 
 -- Processed Stripe events (webhook idempotency) -------------------------------
 create table if not exists public.stripe_events (
@@ -272,6 +342,17 @@ grant select on public.plans to anon, authenticated, service_role;
 grant select on public.subscriptions to authenticated, service_role;
 grant insert, update on public.subscriptions to service_role;
 grant select, insert on public.stripe_events to service_role;
+-- The webhook applies subscription events through this function (out-of-order
+-- guard); the service role calls it via PostgREST RPC.
+grant execute on function public.apply_subscription_event(
+  uuid, text, text, text, text, timestamptz, boolean, bigint
+) to service_role;
+-- Remove the PUBLIC default EXECUTE grant so only service_role can call the
+-- RPC (defense in depth; SECURITY INVOKER already blocks the table write for
+-- anon/authenticated, but this keeps the RPC off the anon-reachable surface).
+revoke execute on function public.apply_subscription_event(
+  uuid, text, text, text, text, timestamptz, boolean, bigint
+) from public;
 
 -- =============================================================================
 -- GENERATION — jobs, generated files, provider runs, usage meter

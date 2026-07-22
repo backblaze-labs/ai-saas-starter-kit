@@ -18,11 +18,6 @@ and frontend entitlement-error / global-401 handling.
 
 Deliberately **deferred** (not ship blockers; recorded here after red-team review):
 
-- **Stripe event-ordering guard** — a stale/retried `subscription.*` event can
-  still overwrite newer state. A correct fix needs a schema migration (add e.g.
-  `last_stripe_event_at`; compare the *event's* `created`, since a Subscription's
-  own `created` is constant) + read-compare-write. Lower-frequency than the
-  double-billing clobber that was fixed. Priority: Medium.
 - **Shared httpx client / connection pooling** — every Supabase repo opens a
   fresh `AsyncClient` (2 round-trips per authed request in `get_current_user`). A
   lifespan-managed singleton trips pytest-asyncio event-loop reuse and isn't
@@ -69,6 +64,7 @@ Nitpicks surfaced by the verify pass on the file surface (logged, not blocking; 
 | Description | Resolution |
 |---|---|
 | Double-billing: an active subscriber hitting Checkout opened a 2nd Stripe subscription | `create_checkout_url` 409s an active sub; the billing UI routes existing subscribers to the Billing Portal (`service/billing.py`, `billing/page.tsx`) |
+| Out-of-order Stripe events: a stale/retried `customer.subscription.*` could overwrite newer state (delivery is unordered) | Added `subscriptions.last_event_created_at` (Stripe event `created`) + `apply_subscription_event` Postgres function; the webhook applies subscription events via PostgREST RPC with an atomic `ON CONFLICT … WHERE incoming >= stored` freshness guard, so a staler event is a DB-side no-op (`init.sql`, `repo/supabase_billing.py`, `service/billing.py`) |
 | Open redirect: `safeNextPath` missed control chars the URL parser strips | Reject any `\x00-\x1f\x7f` char pre-parse (`lib/safe-redirect.ts`) |
 | Unbounded upload body spooled to disk before the size check (disk DoS) | ASGI `BodySizeLimitMiddleware` rejects on Content-Length AND meters the stream, inner to CORS (`runtime/bodylimit.py`) |
 | Generation could starve the shared request threadpool (leaked timed-out threads) | Blocking pipeline runs on a dedicated bounded `ThreadPoolExecutor` (`service/generation.py`) |
