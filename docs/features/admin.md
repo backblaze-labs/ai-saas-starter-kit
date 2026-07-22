@@ -53,9 +53,9 @@ changing a user's role.
 - Role change for a missing user → 404.
 - Invalid role value → 422 (Pydantic `^(user|admin)$`).
 - An admin cannot change their **own** role in the grid (self-lockout guard, UI).
-- Grants backfill: without the B4 migration's `GRANT SELECT ON public.profiles`,
-  role reads 403 at the grant layer and silently fall back to `'user'` — which
-  would make the whole admin surface unreachable. See the migration header.
+- Table grants matter: without `GRANT SELECT ON public.profiles` (in the init
+  schema), role reads would 403 at the grant layer and silently fall back to
+  `'user'` — which would make the whole admin surface unreachable.
 
 ## UX States
 - Loading: skeleton rows per grid; skeleton stat cards on overview

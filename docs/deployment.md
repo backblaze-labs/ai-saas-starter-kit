@@ -120,10 +120,10 @@ the same shape — set the root directory to `services/api`, install with
    The backend reads the URL + anon key from the `NEXT_PUBLIC_*` pair, so there is
    nothing to duplicate into separate `SUPABASE_URL` / `SUPABASE_ANON_KEY` vars.
 
-> ⚠️ **Admin bootstrap:** the first user to sign up is auto-promoted to admin
-> (convenient locally, risky on a public URL). Sign up yourself first before
-> announcing the app, or remove the auto-promote branch in the auth migration and
-> grant admin manually. See [SECURITY.md](SECURITY.md).
+> ℹ️ **Admin bootstrap:** signups get the default `user` role (no auto-promotion).
+> After signing up, grant yourself admin from the Supabase SQL editor:
+> `update public.profiles set role='admin' where email='you@example.com';`
+> See [SECURITY.md](SECURITY.md).
 
 > ℹ️ **Signup email deliverability.** `/auth/confirm` handles Supabase's default
 > confirmation link out of the box, so signup works on the free tier with no email

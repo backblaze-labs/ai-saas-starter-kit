@@ -129,22 +129,27 @@ def get_file(user_id: str, key: str) -> FileMetadata:
 
 
 def get_preview_url(user_id: str, key: str) -> str:
-    """Return a presigned URL without recording a download.
+    """Return an inline presigned URL without recording a download.
 
-    Used by the preview modal for rendering images / PDFs inline — opening
-    a preview is not a user-initiated download and shouldn't inflate the
-    download counter.
+    Used by the preview modal for rendering images / PDFs inline — opening a
+    preview is not a user-initiated download and shouldn't inflate the download
+    counter. `inline` disposition is what lets the PDF render in the modal iframe
+    instead of triggering a browser download.
     """
     _require_owned(user_id, key)
     metadata = get_file_metadata(key)
     if not metadata:
         raise FileNotFoundServiceError()
-    return get_presigned_url(key, filename=metadata.filename)
+    return get_presigned_url(key, filename=metadata.filename, disposition="inline")
 
 
 def get_download_url(user_id: str, key: str) -> str:
-    """Return a presigned URL and record the event as a download."""
-    url = get_preview_url(user_id, key)
+    """Return a presigned URL (forced attachment) and record it as a download."""
+    _require_owned(user_id, key)
+    metadata = get_file_metadata(key)
+    if not metadata:
+        raise FileNotFoundServiceError()
+    url = get_presigned_url(key, filename=metadata.filename, disposition="attachment")
     increment_download_count()
     return url
 

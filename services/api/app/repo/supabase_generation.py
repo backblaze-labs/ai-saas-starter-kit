@@ -26,6 +26,28 @@ def _service_headers() -> dict[str, str]:
     }
 
 
+async def count_jobs_since(user_id: str, since_iso: str) -> int:
+    """Count a user's generation jobs created at/after `since_iso`.
+
+    Counts jobs (attempts), not successes, so the daily quota also charges for
+    failed runs — each attempt spends real provider budget. Uses PostgREST's
+    exact-count header so only one row is transferred.
+    """
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.get(
+            f"{settings.supabase_url}/rest/v1/generation_jobs",
+            params={
+                "user_id": f"eq.{user_id}",
+                "created_at": f"gte.{since_iso}",
+                "select": "id",
+            },
+            headers={**_service_headers(), "Prefer": "count=exact", "Range": "0-0"},
+        )
+    resp.raise_for_status()
+    total = resp.headers.get("content-range", "*/0").rsplit("/", 1)[-1]
+    return int(total) if total.isdigit() else 0
+
+
 async def create_job(
     *, user_id: str, prompt: str, model: str, provider: str = "nvidia", seed: int | None = None
 ) -> dict:

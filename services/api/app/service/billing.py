@@ -8,6 +8,9 @@ the database.
 
 import logging
 from datetime import UTC, datetime
+from functools import partial
+
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.repo import stripe_client, supabase_billing
@@ -15,6 +18,14 @@ from app.repo.stripe_client import StripeConfigError
 from app.types.billing import TIER_RANK, Entitlements, Plan, Subscription
 
 logger = logging.getLogger(__name__)
+
+
+class ActiveSubscriptionError(RuntimeError):
+    """Raised when a user with an active subscription tries to start a new
+    Checkout. A second subscription-mode Checkout would create a SECOND Stripe
+    subscription on the same customer (double billing) — plan changes must go
+    through the Billing Portal instead. The route maps this to 409."""
+
 
 # Stripe subscription statuses that entitle the user to paid features.
 _ACTIVE_STATUSES = frozenset({"active", "trialing"})
@@ -97,14 +108,27 @@ async def create_checkout_url(*, user_id: str, email: str | None, plan_id: str) 
             "(set STRIPE_PRICE_PRO / STRIPE_PRICE_TEAM)."
         )
     existing = await supabase_billing.get_subscription(user_id)
+    # Guard against double billing: an active subscriber must change plans via the
+    # Billing Portal (which swaps/prorates the existing subscription), not a new
+    # Checkout (which would open a second concurrent subscription).
+    if existing and existing.get("status") in _ACTIVE_STATUSES:
+        raise ActiveSubscriptionError(
+            "You already have an active subscription. Use 'Manage billing' to "
+            "change your plan."
+        )
     customer_id = existing.get("stripe_customer_id") if existing else None
-    return stripe_client.create_checkout_session(
-        price_id=price_id,
-        customer_email=email,
-        client_reference_id=user_id,
-        success_url=settings.billing_success_url,
-        cancel_url=settings.billing_cancel_url,
-        customer_id=customer_id,
+    # The Stripe SDK is synchronous (blocking HTTP). Offload it so the network
+    # round-trip doesn't stall the event loop for every other in-flight request.
+    return await run_in_threadpool(
+        partial(
+            stripe_client.create_checkout_session,
+            price_id=price_id,
+            customer_email=email,
+            client_reference_id=user_id,
+            success_url=settings.billing_success_url,
+            cancel_url=settings.billing_cancel_url,
+            customer_id=customer_id,
+        )
     )
 
 
@@ -116,8 +140,13 @@ async def create_portal_url(*, user_id: str) -> str:
     customer_id = existing.get("stripe_customer_id") if existing else None
     if not customer_id:
         raise ValueError("No Stripe customer for this user yet — subscribe first.")
-    return stripe_client.create_portal_session(
-        customer_id=customer_id, return_url=settings.billing_portal_return_url
+    # Offload the blocking Stripe SDK call off the event loop (see checkout).
+    return await run_in_threadpool(
+        partial(
+            stripe_client.create_portal_session,
+            customer_id=customer_id,
+            return_url=settings.billing_portal_return_url,
+        )
     )
 
 
@@ -159,6 +188,17 @@ async def _sync_subscription(sub_obj: dict, *, deleted: bool) -> None:
     first_item = items[0] if items else {}
     price_id = (first_item.get("price") or {}).get("id")
     tier = _price_to_tier(price_id)
+
+    # A live, paying subscription whose price maps to "free" means STRIPE_PRICE_*
+    # is unset/misconfigured for this deploy — the customer would be silently
+    # locked out. Surface it loudly rather than writing a wrong entitlement.
+    if not deleted and tier == "free" and sub_obj.get("status") in _ACTIVE_STATUSES:
+        logger.warning(
+            "Active subscription %s price=%s did not map to a paid tier — check "
+            "STRIPE_PRICE_PRO / STRIPE_PRICE_TEAM.",
+            sub_obj.get("id"),
+            price_id,
+        )
 
     # Stripe's 2025 "basil" API moved current_period_end from the Subscription
     # onto each subscription item; fall back to the legacy top-level field for

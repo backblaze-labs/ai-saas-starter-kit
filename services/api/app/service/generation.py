@@ -8,15 +8,26 @@ this boundary — the repo returns plain dicts.
 
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from functools import partial
-
-from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.repo import generation_pipeline, supabase_generation
 from app.types.generation import GeneratedAsset, GenerationJob
 
 logger = logging.getLogger(__name__)
+
+# DEDICATED thread pool for the blocking Genblaze SDK. Kept separate from
+# Starlette's shared request threadpool on purpose: on a hard-deadline timeout we
+# abandon the worker thread (a Python thread can't be force-killed), so a stuck
+# NVIDIA endpoint leaks threads. Isolating them here means those leaks are bounded
+# to `generation_max_concurrency` and can never starve the pool that serves file
+# I/O and /health. Excess concurrent requests queue on this executor.
+_gen_executor = ThreadPoolExecutor(
+    max_workers=max(1, settings.generation_max_concurrency),
+    thread_name_prefix="genblaze",
+)
 
 
 class GenerationConfigError(RuntimeError):
@@ -27,15 +38,40 @@ class GenerationError(RuntimeError):
     """Raised when the provider run produced no usable asset."""
 
 
+class GenerationQuotaError(RuntimeError):
+    """Raised when a user exceeds the per-day generation cap. Mapped to 429."""
+
+
 def is_configured() -> bool:
     """True when both the provider key and the persistence layer are set."""
     return generation_pipeline.is_configured() and supabase_generation.is_configured()
+
+
+async def _enforce_daily_quota(user_id: str) -> None:
+    """Soft per-user daily cap on generation attempts (0 disables).
+
+    Counts jobs created since UTC midnight *before* creating a new one, so both
+    successes and failures count against a paid feature that spends real provider
+    credits. This is a check-then-create soft cap (a burst can race past by a few)
+    — acceptable for a starter kit; a hard cap would need a DB-side counter.
+    """
+    limit = settings.generation_daily_limit
+    if limit <= 0:
+        return
+    midnight = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    used = await supabase_generation.count_jobs_since(user_id, midnight.isoformat())
+    if used >= limit:
+        raise GenerationQuotaError(
+            f"Daily generation limit of {limit} reached. Try again tomorrow."
+        )
 
 
 async def generate(*, user_id: str, prompt: str, seed: int | None = None) -> GenerationJob:
     """Run one text-to-image generation and return the persisted job record."""
     if not generation_pipeline.is_configured():
         raise GenerationConfigError("NVIDIA_API_KEY is not configured")
+
+    await _enforce_daily_quota(user_id)
 
     model = settings.nvidia_image_model
     job = await supabase_generation.create_job(
@@ -47,11 +83,14 @@ async def generate(*, user_id: str, prompt: str, seed: int | None = None) -> Gen
         # Hard request backstop: some NIM endpoints hold/trickle a slow request
         # so the SDK's own read timeout never fires. wait_for guarantees the
         # request (and this coroutine) returns even then — the abandoned worker
-        # thread is left to unwind on its own. The job is marked failed so it
-        # never lingers as "running".
+        # thread is left to unwind on its own (on the DEDICATED _gen_executor, so
+        # a leak can't starve the shared request pool). The job is marked failed
+        # so it never lingers as "running".
+        loop = asyncio.get_running_loop()
         result = await asyncio.wait_for(
-            run_in_threadpool(
-                partial(generation_pipeline.generate_image, user_id=user_id, prompt=prompt, seed=seed)
+            loop.run_in_executor(
+                _gen_executor,
+                partial(generation_pipeline.generate_image, user_id=user_id, prompt=prompt, seed=seed),
             ),
             timeout=settings.generation_deadline,
         )

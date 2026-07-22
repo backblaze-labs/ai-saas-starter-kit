@@ -40,7 +40,7 @@ def _extract_image_metadata(file_data: bytes) -> dict:
 
 def _extract_pdf_metadata(file_data: bytes) -> dict:
     try:
-        from PyPDF2 import PdfReader
+        from pypdf import PdfReader
 
         reader = PdfReader(io.BytesIO(file_data))
         info = reader.metadata

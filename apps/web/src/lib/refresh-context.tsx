@@ -2,10 +2,12 @@
 
 import { createContext, useCallback, useContext } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { qk } from "@/lib/queries";
+import { invalidateFileData } from "@/lib/queries";
 
 interface RefreshContextValue {
-  /** Re-fetch every B2-backed query (files, stats, activity, previews). */
+  /** Re-fetch the B2-backed file queries (file lists, stats, activity) — e.g.
+   *  after an upload. Scoped to file data so it doesn't churn unrelated caches
+   *  (health, entitlements) or re-request every open preview URL. */
   triggerRefresh: () => void;
   /** Kept for backwards compatibility with existing call sites. With
    *  TanStack Query in place, components should prefer `useQuery`'s own
@@ -21,7 +23,7 @@ const RefreshContext = createContext<RefreshContextValue>({
 export function RefreshProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const triggerRefresh = useCallback(() => {
-    qc.invalidateQueries({ queryKey: qk.all });
+    invalidateFileData(qc);
   }, [qc]);
 
   return (

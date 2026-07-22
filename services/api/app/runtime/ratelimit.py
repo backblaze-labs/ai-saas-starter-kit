@@ -29,6 +29,12 @@ _lock = Lock()
 # (ip, tier) -> (window_start_monotonic, count)
 _state: dict[tuple[str, str], tuple[float, int]] = {}
 
+# Paths exempt from per-IP limiting. The Stripe webhook arrives from a small set
+# of Stripe egress IPs, so every customer's events would share one bucket and a
+# burst would 429 → Stripe retries with backoff, delaying entitlement updates.
+# The endpoint is already protected by signature verification, not by volume.
+_EXEMPT_PATHS = frozenset({"/billing/webhook"})
+
 
 def _client_ip(request: Request) -> str:
     """Best-effort client IP.
@@ -64,6 +70,9 @@ def _reset_state() -> None:
 
 
 async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path in _EXEMPT_PATHS:
+        return await call_next(request)
+
     ip = _client_ip(request)
     tier, limit = _tier_and_limit(request)
     now = time.monotonic()

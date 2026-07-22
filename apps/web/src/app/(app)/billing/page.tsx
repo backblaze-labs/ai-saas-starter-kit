@@ -13,6 +13,7 @@ import {
   useProPreview,
   useSubscription,
 } from "@/lib/queries";
+import { entitlementViewState } from "@/lib/query-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -28,9 +29,15 @@ const UNAVAILABLE_MSG =
   "Billing is temporarily unavailable. Please try again later.";
 
 function billingErrorToast(err: ApiError) {
-  toast.error(
-    err.status === 503 ? UNAVAILABLE_MSG : "Something went wrong. Please try again.",
-  );
+  if (err.status === 503) {
+    toast.error(UNAVAILABLE_MSG);
+  } else if (err.status === 409) {
+    // Already-active subscriber hit Checkout (e.g. a stale tab). Point them at
+    // the portal, which is the correct path for a plan change.
+    toast.info("You already have an active subscription — use “Manage billing” to change plans.");
+  } else {
+    toast.error("Something went wrong. Please try again.");
+  }
 }
 
 function priceLabel(cents: number, interval: string): string {
@@ -63,9 +70,18 @@ export default function BillingPage() {
     }
   }, []);
 
+  // If entitlements failed to load, don't render a confident "FREE" — that both
+  // misleads a paying user and would route them to Checkout. Surface the error
+  // (the backend still 409s a real double-checkout as a safety net).
+  const entState = entitlementViewState(entitlements);
   const currentRank = entitlements.data?.rank ?? 0;
   const currentTier = entitlements.data?.tier ?? "free";
   const hasCustomer = !!subscription.data?.stripe_customer_id;
+  // A user on a paid tier changes plans through the Billing Portal (which swaps/
+  // prorates the existing subscription). Sending them back through Checkout would
+  // open a SECOND concurrent subscription — double billing. Only free users go to
+  // Checkout to start their first subscription.
+  const isSubscriber = currentRank > 0;
 
   function onUpgrade(planId: string) {
     checkout.mutate(planId, { onError: billingErrorToast });
@@ -104,11 +120,30 @@ export default function BillingPage() {
 
       <div className="flex items-center gap-2 text-sm">
         <span className="text-muted-foreground">Current plan:</span>
-        <Badge variant={currentRank > 0 ? "default" : "secondary"} data-testid="current-plan">
-          {currentTier.toUpperCase()}
-        </Badge>
-        {subscription.data?.cancel_at_period_end && (
-          <span className="text-xs text-muted-foreground">(cancels at period end)</span>
+        {entState === "error" ? (
+          <span className="flex items-center gap-2 text-[var(--attention)]">
+            Couldn&apos;t load your plan.
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0"
+              onClick={() => entitlements.refetch()}
+            >
+              Retry
+            </Button>
+          </span>
+        ) : (
+          <>
+            <Badge
+              variant={currentRank > 0 ? "default" : "secondary"}
+              data-testid="current-plan"
+            >
+              {entState === "loading" ? "…" : currentTier.toUpperCase()}
+            </Badge>
+            {subscription.data?.cancel_at_period_end && (
+              <span className="text-xs text-muted-foreground">(cancels at period end)</span>
+            )}
+          </>
         )}
       </div>
 
@@ -153,6 +188,18 @@ export default function BillingPage() {
                   <Button variant="ghost" className="w-full" disabled>
                     Included
                   </Button>
+                ) : isSubscriber ? (
+                  // Existing paid subscriber → Portal (proration/swap), never a
+                  // second Checkout.
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={onManage}
+                    disabled={portal.isPending}
+                    data-testid={`manage-${plan.id}`}
+                  >
+                    {portal.isPending ? "Opening…" : "Change plan"}
+                  </Button>
                 ) : (
                   <Button
                     className="w-full"
@@ -160,7 +207,7 @@ export default function BillingPage() {
                     disabled={checkout.isPending}
                     data-testid={`upgrade-${plan.id}`}
                   >
-                    {plan.rank > currentRank ? "Upgrade" : "Switch"} to {plan.name}
+                    Upgrade to {plan.name}
                   </Button>
                 )}
               </CardFooter>

@@ -36,7 +36,7 @@ async def test_downloads_increment_stats(auth_client, monkeypatch):
     monkeypatch.setattr(
         files_service,
         "get_presigned_url",
-        lambda key, filename=None: "https://example.com/file",
+        lambda key, filename=None, disposition="attachment": "https://example.com/file",
     )
 
     response = await auth_client.get("/files/stats")
@@ -59,7 +59,7 @@ async def test_preview_does_not_increment_downloads(auth_client, monkeypatch):
     monkeypatch.setattr(
         files_service,
         "get_presigned_url",
-        lambda key, filename=None: "https://example.com/preview",
+        lambda key, filename=None, disposition="attachment": "https://example.com/preview",
     )
 
     for _ in range(3):

@@ -59,6 +59,9 @@ class FakeGenStore:
             if j.get("user_id") == user_id
         ]
 
+    async def count_jobs_since(self, user_id, since_iso):
+        return sum(1 for j in self.jobs.values() if j.get("user_id") == user_id)
+
 
 @pytest.fixture
 def fake_store(monkeypatch):
@@ -70,6 +73,7 @@ def fake_store(monkeypatch):
         "record_provider_run",
         "record_usage_event",
         "list_jobs",
+        "count_jobs_since",
     ):
         monkeypatch.setattr(supabase_generation, name, getattr(store, name))
     return store
@@ -227,6 +231,53 @@ async def test_generate_502_when_pipeline_raises(client, monkeypatch, fake_store
     )
     assert resp.status_code == 502
     assert fake_store.jobs["job-1"]["status"] == "failed"
+
+
+# --- route: per-user daily quota -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_429_over_daily_quota(client, monkeypatch, fake_store):
+    """Once the per-user daily cap is hit, generation is refused with 429 and the
+    provider is never called (no wasted credits)."""
+    from app.config import settings as app_settings
+
+    _auth_as(monkeypatch, tier="pro")
+    monkeypatch.setattr(generation_pipeline, "is_configured", lambda: True)
+    monkeypatch.setattr(app_settings, "generation_daily_limit", 1)
+
+    def _fail(**kw):
+        raise AssertionError("provider must not run once the quota is exhausted")
+
+    monkeypatch.setattr(generation_pipeline, "generate_image", _fail)
+    # Pre-seed a job for the user so today's count is already at the limit.
+    fake_store.jobs["prior"] = {"id": "prior", "user_id": "u", "status": "succeeded"}
+
+    resp = await client.post(
+        "/generation/generate",
+        headers={"Authorization": "Bearer x"},
+        json={"prompt": "one too many"},
+    )
+    assert resp.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_generate_quota_disabled_when_zero(client, monkeypatch, fake_store):
+    from app.config import settings as app_settings
+
+    _auth_as(monkeypatch, tier="pro")
+    monkeypatch.setattr(generation_pipeline, "is_configured", lambda: True)
+    monkeypatch.setattr(generation_pipeline, "generate_image", lambda **kw: _fake_result())
+    monkeypatch.setattr(app_settings, "generation_daily_limit", 0)  # disabled
+    # Even with prior jobs, a 0 limit never blocks.
+    fake_store.jobs["prior"] = {"id": "prior", "user_id": "u", "status": "succeeded"}
+
+    resp = await client.post(
+        "/generation/generate",
+        headers={"Authorization": "Bearer x"},
+        json={"prompt": "unlimited"},
+    )
+    assert resp.status_code == 200
 
 
 # --- route: list jobs ------------------------------------------------------

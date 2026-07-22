@@ -1,16 +1,39 @@
 import logging
+import secrets
 import time
 from collections import defaultdict
 from threading import Lock
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 
+from app.config import settings
 from app.types import ErrorResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _authorize_metrics(authorization: str | None) -> None:
+    """Gate /metrics behind METRICS_TOKEN when configured.
+
+    Empty token (default) keeps the endpoint open — fine for local dev or a
+    private-network scrape. When set, require a matching bearer token so the
+    metrics surface (route templates, traffic/error volumes) isn't world-
+    readable on a public deploy. Constant-time compare avoids a timing oracle.
+    """
+    expected = settings.metrics_token
+    if not expected:
+        return
+    provided = ""
+    if authorization and authorization.lower().startswith("bearer "):
+        provided = authorization.split(" ", 1)[1].strip()
+    if not secrets.compare_digest(provided, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid metrics token",
+        )
 
 # Thread-safe in-process metrics counters
 _lock = Lock()
@@ -38,7 +61,8 @@ def record_upload(success: bool) -> None:
 
 
 @router.get("/metrics")
-async def metrics():
+async def metrics(authorization: str | None = Header(default=None)):
+    _authorize_metrics(authorization)
     lines = []
     lines.append("# HELP http_requests_total Total HTTP requests")
     lines.append("# TYPE http_requests_total counter")

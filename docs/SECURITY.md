@@ -25,12 +25,15 @@ Security principles and implementation for the ai-saas-starter-kit.
 - **Service-role key** is server-only (`SUPABASE_SERVICE_ROLE_KEY`), never `NEXT_PUBLIC_*`,
   never referenced in client code.
 - Redirect targets (`next` param, `/auth/confirm`) are restricted to same-site relative
-  paths via `apps/web/src/lib/safe-redirect.ts` (rejects `//`, `\`, and absolute URLs)
-  to prevent open redirects.
-- **First-user-admin:** the signup trigger promotes the first user to `admin` for
-  out-of-the-box demo convenience. On a **public hosted** deploy this is a privilege
-  risk (first stranger to register becomes admin) — sign up yourself first, or remove
-  the auto-promote branch in the migration and grant admin manually.
+  paths via `apps/web/src/lib/safe-redirect.ts` (rejects `//`, `\`, absolute URLs, and
+  any control char — `\t`/`\r`/`\n` are stripped by the URL parser and would otherwise
+  slip a `//evil.com` past the guard) to prevent open redirects.
+- **Admin role** is granted explicitly (no auto-promotion — every signup gets the
+  default `user` role in `handle_new_user`). After the first deploy, run
+  `update public.profiles set role='admin' where email='you@example.com';` as the
+  service role. The `prevent_role_escalation` trigger blocks non-admins from changing
+  their own role; the admin role-change API runs with the caller's own token so the
+  trigger permits it.
 
 ## Upload Validation
 
@@ -44,7 +47,17 @@ Security principles and implementation for the ai-saas-starter-kit.
 ## Rate Limiting
 
 - Per-IP fixed-window limiter (`app/runtime/ratelimit.py`), configurable via `RATE_LIMIT_PER_MINUTE` (reads) and `RATE_LIMIT_WRITE_PER_MINUTE` (uploads/deletes/downloads). Guards against DoS and Backblaze transaction/egress cost amplification.
+- `/billing/webhook` is **exempt** — Stripe events arrive from a few shared egress IPs, so limiting them would throttle all customers' events into one bucket; the endpoint is guarded by signature verification instead.
 - In-process, per replica. Horizontal scaling needs a shared store (e.g. Redis) — see [RELIABILITY.md](RELIABILITY.md#rate-limiting).
+
+## Request Body Size Limit
+
+- A pure-ASGI middleware (`app/runtime/bodylimit.py`) rejects any request body over `MAX_REQUEST_BODY_SIZE` with a `413` **before** FastAPI's multipart parser buffers it to disk — an in-handler size check runs too late (the body is already spooled). It refuses on `Content-Length` up front and also meters the streamed body, so a chunked / no-Content-Length request can't slip past. Registered inner to CORS so the `413` still carries CORS headers.
+
+## Paid-Feature Abuse Controls
+
+- **Plan changes go through the Billing Portal, not a second Checkout.** `POST /billing/checkout` returns `409` for a user who already has an active subscription (a second subscription-mode Checkout would open a *concurrent* Stripe subscription — double billing); the UI routes active subscribers to the portal.
+- **Generation has a soft per-user daily cap** (`GENERATION_DAILY_LIMIT`, counted over jobs so failures count too) → `429` when exceeded, so a compromised/shared Pro session can't burn unbounded provider credits.
 
 ## File Surface: Authentication & Per-User Isolation
 
@@ -61,13 +74,14 @@ Security principles and implementation for the ai-saas-starter-kit.
 
 ## Download Safety
 
-- Presigned URLs force `Content-Disposition: attachment`
-- Prevents inline rendering of user-uploaded content (XSS mitigation)
+- Download presigned URLs force `Content-Disposition: attachment` — prevents inline rendering of user-uploaded content (XSS mitigation).
+- Preview presigned URLs use `inline` (so the modal can render an image/PDF), which is safe: the URL is on the isolated B2 origin (not the app origin) and SVG/HTML are excluded from the upload allow-list, so no allowed type executes script in the app's context.
 
 ## Response Hardening
 
 - Baseline headers on every API response: `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`
-- Interactive API docs (`/docs`, `/redoc`, `/openapi.json`) are on by default but can be disabled with `ENABLE_DOCS=false` to hide the API surface in production
+- Interactive API docs (`/docs`, `/redoc`, `/openapi.json`) are **off by default**; set `ENABLE_DOCS=true` to expose them (e.g. for local exploration).
+- `/metrics` is gated by an optional `METRICS_TOKEN` bearer token. Empty (default) keeps it open for local dev / a private-network scrape; set it on a public deploy so route templates and traffic/error volumes aren't world-readable.
 
 ## Secrets Management
 

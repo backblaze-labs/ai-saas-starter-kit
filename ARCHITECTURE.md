@@ -87,7 +87,7 @@ services/api/
     `public.stripe_events` (webhook idempotency) — subscription rows are written only
     by the webhook via the service role (RLS lets a user read only their own)
   - Row Level Security scopes reads/writes to the owning user (admins see all)
-  - Schema lives in `supabase/migrations/`; local dev runs the full stack via `supabase start`
+  - Schema lives in a single init file, `supabase/migrations/00000000000000_init.sql` (auth, billing, generation, admin sections); local dev runs the full stack via `supabase start`
 
 ## External Services
 

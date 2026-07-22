@@ -99,8 +99,8 @@ class FakeBillingStore:
         # (on insert). Replacing the whole row here would hide the very clobber
         # the checkout/subscription ordering fix is meant to prevent.
         uid = row["user_id"]
-        # Not-null DB defaults from the subscriptions migration, applied only
-        # when the row is first inserted (see migration 20260708191053).
+        # Not-null DB defaults from the subscriptions table, applied only when
+        # the row is first inserted (see the init schema, billing section).
         db_defaults = {"plan_id": "free", "status": "inactive", "cancel_at_period_end": False}
         base = self.subs.get(uid) or db_defaults
         self.subs[uid] = {**base, **row}
@@ -312,6 +312,63 @@ async def test_checkout_rejects_unknown_plan(monkeypatch, fake_store):
         await billing_service.create_checkout_url(
             user_id="u", email="u@example.com", plan_id="enterprise"
         )
+
+
+@pytest.mark.asyncio
+async def test_checkout_blocks_active_subscriber(monkeypatch, fake_store):
+    # An active subscriber must not open a SECOND Checkout — that creates a second
+    # concurrent Stripe subscription (double billing). They get a 409-mapped error
+    # and are routed to the Billing Portal instead.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_team", "price_team_test")
+    fake_store.subs["u"] = {
+        "user_id": "u", "plan_id": "pro", "status": "active", "stripe_customer_id": "cus_x"
+    }
+
+    def _fail(**_kw):  # the guard must short-circuit before Stripe is called
+        raise AssertionError("create_checkout_session must not run for an active sub")
+
+    monkeypatch.setattr(stripe_client, "create_checkout_session", _fail)
+
+    with pytest.raises(billing_service.ActiveSubscriptionError):
+        await billing_service.create_checkout_url(
+            user_id="u", email="u@example.com", plan_id="team"
+        )
+
+
+@pytest.mark.asyncio
+async def test_checkout_allowed_for_canceled_subscriber(monkeypatch, fake_store):
+    # A canceled/inactive user CAN re-subscribe via Checkout (reusing their
+    # customer) — the guard only blocks currently-active subscriptions.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    fake_store.subs["u"] = {
+        "user_id": "u", "plan_id": "free", "status": "canceled", "stripe_customer_id": "cus_x"
+    }
+    monkeypatch.setattr(
+        stripe_client, "create_checkout_session", lambda **kw: "https://checkout.example/s"
+    )
+
+    url = await billing_service.create_checkout_url(
+        user_id="u", email="u@example.com", plan_id="pro"
+    )
+    assert url == "https://checkout.example/s"
+
+
+@pytest.mark.asyncio
+async def test_active_sub_with_unmapped_price_warns(monkeypatch, fake_store, caplog):
+    # A live subscription whose price doesn't map to a paid tier means the
+    # STRIPE_PRICE_* env is misconfigured for this deploy — it must be logged
+    # loudly, not silently written as a "free" entitlement.
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_team", "price_team_test")
+    evt = _sub_event(price_id="price_UNMAPPED", status="active", event_id="evt_unmapped")
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: evt)
+
+    with caplog.at_level("WARNING"):
+        await billing_service.handle_webhook(b"{}", "sig")
+
+    assert any("did not map to a paid tier" in r.getMessage() for r in caplog.records)
 
 
 # --- routes via the ASGI client --------------------------------------------
