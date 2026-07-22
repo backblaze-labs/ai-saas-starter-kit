@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-20 -->
+<!-- last_verified: 2026-07-21 -->
 # Tech Debt Tracker
 
 Known tech debt items. Agents update this when they discover or create tech debt.
@@ -18,11 +18,6 @@ and frontend entitlement-error / global-401 handling.
 
 Deliberately **deferred** (not ship blockers; recorded here after red-team review):
 
-- **Shared httpx client / connection pooling** — every Supabase repo opens a
-  fresh `AsyncClient` (2 round-trips per authed request in `get_current_user`). A
-  lifespan-managed singleton trips pytest-asyncio event-loop reuse and isn't
-  exercised by the (fully monkeypatched) tests, so it needs a real integration
-  test alongside it. Priority: Medium (latency, not correctness).
 - **e2e (Playwright) not in CI** — the 4 journey specs need the full stack
   (Supabase + API + Stripe CLI + mailpit); wiring an ephemeral stack into CI is a
   separate effort. Run locally with `pnpm test:e2e` as a pre-release gate.
@@ -63,6 +58,7 @@ Nitpicks surfaced by the verify pass on the file surface (logged, not blocking; 
 
 | Description | Resolution |
 |---|---|
+| Every Supabase repo opened a fresh `AsyncClient` per call (2 hops per authed request in `get_current_user`), paying TCP+TLS setup each time | Process-wide pooled `httpx.AsyncClient` in `repo/http_client.py`, lifespan-managed with a lazy getter for the TestClient path; a suite-wide autouse reset fixture (`conftest.py`) closes it around each test and `tests/test_http_client.py` exercises reuse/idempotent-close/401 |
 | Double-billing: an active subscriber hitting Checkout opened a 2nd Stripe subscription | `create_checkout_url` 409s an active sub; the billing UI routes existing subscribers to the Billing Portal (`service/billing.py`, `billing/page.tsx`) |
 | Out-of-order Stripe events: a stale/retried `customer.subscription.*` could overwrite newer state (delivery is unordered) | Added `subscriptions.last_event_created_at` (Stripe event `created`) + `apply_subscription_event` Postgres function; the webhook applies subscription events via PostgREST RPC with an atomic `ON CONFLICT … WHERE incoming >= stored` freshness guard, so a staler event is a DB-side no-op (`init.sql`, `repo/supabase_billing.py`, `service/billing.py`) |
 | Open redirect: `safeNextPath` missed control chars the URL parser strips | Reject any `\x00-\x1f\x7f` char pre-parse (`lib/safe-redirect.ts`) |

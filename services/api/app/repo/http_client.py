@@ -21,6 +21,12 @@ logger = logging.getLogger("api")
 # per-request with their own `_TIMEOUT`, so this default is rarely hit.
 _DEFAULT_TIMEOUT = httpx.Timeout(10.0)
 
+# Make the shared pool's ceiling explicit rather than relying on httpx defaults,
+# so the connection budget is visible and tunable. Sized to the API's likely
+# concurrency (Supabase does ~2 hops per authed request); httpx queues callers
+# beyond the limit rather than erroring.
+_LIMITS = httpx.Limits(max_connections=100, max_keepalive_connections=20)
+
 _client: httpx.AsyncClient | None = None
 
 
@@ -32,7 +38,7 @@ def get_client() -> httpx.AsyncClient:
     """
     global _client
     if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT)
+        _client = httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, limits=_LIMITS)
         logger.info("Created shared Supabase httpx client")
     return _client
 

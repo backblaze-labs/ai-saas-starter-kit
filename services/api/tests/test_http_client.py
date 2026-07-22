@@ -8,19 +8,12 @@ end-to-end through the pooled client.
 """
 
 import httpx
-import pytest
 
 from app.config import settings
 from app.repo import http_client, supabase_billing
 
-
-@pytest.fixture(autouse=True)
-async def _reset_shared_client():
-    """Start and end each test with no shared client so instances never leak
-    across event loops (pytest gives each async test its own loop)."""
-    await http_client.close_client()
-    yield
-    await http_client.close_client()
+# The shared client is reset before/after every test by the suite-wide autouse
+# `reset_shared_http_client` fixture in conftest.py, so no local fixture here.
 
 
 async def test_get_client_returns_same_instance():
