@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
 from app.config import APP_VERSION, settings  # noqa: E402
+from app.repo import http_client  # noqa: E402
 from app.runtime import (  # noqa: E402
     admin,
     auth,
@@ -122,7 +123,15 @@ async def lifespan(_app: "FastAPI"):
             "authentication. Set METRICS_TOKEN on any public deploy so route "
             "templates and traffic/error volumes are not world-readable."
         )
-    yield
+
+    # Open the process-wide Supabase httpx client once so its connection pool is
+    # reused across every request (the auth hot path alone makes two calls per
+    # request); close it on shutdown so the pool drains cleanly.
+    await http_client.init_client()
+    try:
+        yield
+    finally:
+        await http_client.close_client()
 
 # --- Structured JSON logging ---
 
