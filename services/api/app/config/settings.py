@@ -102,6 +102,16 @@ class Settings(BaseSettings):
 
     # Upload limits
     max_file_size: int = 100 * 1024 * 1024  # 100MB
+    # Max concurrent in-flight uploads across the process. Each upload buffers
+    # its whole body in memory (see docs/RELIABILITY.md), so worst-case upload
+    # memory is bounded by this * max_file_size, PER WORKER PROCESS — the gate
+    # that keeps N large concurrent uploads from OOM-ing a small instance.
+    # Enforced by an asyncio.Semaphore in runtime/upload.py; excess requests
+    # wait for a slot. This is a GLOBAL cap (all users on a worker share it):
+    # lower it on a memory-constrained instance, raise it if legitimate parallel
+    # uploads start queuing. Assumes an upstream/proxy request-read timeout so a
+    # slow client can't pin a slot indefinitely (uvicorn sets none by default).
+    max_concurrent_uploads: int = 8
     # Hard ceiling on any request body, enforced at the ASGI layer (see
     # runtime/bodylimit.py) BEFORE FastAPI buffers a multipart upload to disk.
     # Sized a little above max_file_size to leave room for multipart framing.

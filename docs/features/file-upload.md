@@ -36,10 +36,9 @@ Upload files from the browser to Backblaze B2 with real-time progress tracking.
 - Client validates file size (max 100MB) and type — rejected files remain in the queue with a clear reason and show toast feedback
 - XHR sends multipart POST to `/upload` with progress events
 - API checks `Content-Length` header early to reject oversized requests before reading body
-- API validates content type against allowlist (SVG excluded — stored-XSS risk)
+- API validates content type against allowlist (SVG excluded — stored-XSS risk) and that the file extension matches the declared MIME type **before buffering the body** (`check_upload_type` in `service/upload.py`), so a disallowed type returns 415 without reading the body or taking a concurrency slot
 - API sanitizes filename (strips path components, null bytes, unsafe chars, limits to 200 chars)
-- API validates file extension matches declared MIME type
-- API reads file in 1MB chunks with streaming size enforcement (max 100MB)
+- API acquires a concurrency slot (`MAX_CONCURRENT_UPLOADS`, default 4) then reads the file in 1MB chunks with streaming size enforcement (max 100MB); the body is buffered fully in memory — see [RELIABILITY.md](../RELIABILITY.md#resource-isolation--limits)
 - API rejects empty files
 - API verifies the leading bytes match the declared type for binary formats (magic-byte signature check)
 - API uses key: `uploads/{sanitized_filename}`
