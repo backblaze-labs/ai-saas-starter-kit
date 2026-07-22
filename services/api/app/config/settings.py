@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     # every plans/subscriptions read/write, so it is required at startup (main.py).
     supabase_service_role_key: str = ""
 
+    # Short-TTL cache for the per-request Supabase IDENTITY lookup
+    # (GET /auth/v1/user), keyed by a hash of the bearer token. Cuts one of the
+    # two auth round-trips on a warm hit. Only identity (user id + email) is
+    # cached — the role/authorization decision is ALWAYS fetched live, so a
+    # demoted admin loses access immediately. Tradeoff: a revoked/rotated token
+    # stays accepted for up to this many seconds. Set to 0 to disable the cache.
+    auth_cache_ttl_seconds: int = 30
+
     # Stripe billing. All optional to boot: billing endpoints return a clean 503
     # when a key is missing, so the auth + file-manager scaffold runs without
     # Stripe configured. Test-mode keys look like sk_test_… / whsec_…; get them
