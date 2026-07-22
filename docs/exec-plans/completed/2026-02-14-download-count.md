@@ -11,5 +11,5 @@
 2. Update types in API and shared package for `total_downloads`.
 3. Wire UI stats card to show the new value.
 4. Update dashboard feature doc to remove placeholder language.
-5. Add tests for `/files/stats` and `/files/{key}/download` increment behavior.
+5. Add tests for `/files/stats` and `/files/{key}/download` (now `/files-by-key/download`) increment behavior.
 

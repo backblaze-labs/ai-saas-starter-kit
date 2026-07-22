@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-15 -->
+<!-- last_verified: 2026-07-21 -->
 # Architecture
 
 ## Components
@@ -109,8 +109,8 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 - **Billing**: Browser -> `POST /billing/checkout` -> Stripe Checkout (redirect) -> Stripe -> `POST /billing/webhook` (signature-verified) -> `service/billing.py` upserts the subscription into Supabase (service role). `require_plan(min_tier)` reads the derived entitlements and 402s below the required tier.
 - **Upload**: Browser -> `POST /upload` (multipart) -> API validates -> service orchestrates -> repo writes to B2 -> metadata extracted -> response
 - **List**: Browser -> `GET /files` -> service calls repo -> returns file list
-- **Download**: Browser -> `GET /files-by-key/download?key=...` -> service validates key -> repo generates presigned URL -> browser downloads
-- **Delete**: Browser -> `DELETE /files-by-key?key=...` -> service validates key -> repo deletes from B2
+- **Download**: Browser -> `GET /files-by-key/download?key=...` -> service validates + ownership-scopes the key -> repo generates presigned URL -> browser downloads
+- **Delete**: Browser -> `DELETE /files-by-key?key=...` -> service validates + ownership-scopes the key -> repo deletes from B2
 
 ## Observability
 

@@ -69,7 +69,8 @@ async def test_download_not_found_returns_404(auth_client, monkeypatch):
     monkeypatch.setattr(files_service, "get_file_metadata", lambda key: None)
 
     response = await auth_client.get(
-        f"/files/uploads/{TEST_USER_ID}/missing.txt/download"
+        "/files-by-key/download",
+        params={"key": f"uploads/{TEST_USER_ID}/missing.txt"},
     )
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()

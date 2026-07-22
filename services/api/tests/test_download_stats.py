@@ -43,8 +43,8 @@ async def test_downloads_increment_stats(auth_client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["total_downloads"] == 0
 
-    await auth_client.get(f"/files/{OWNED_KEY}/download")
-    await auth_client.get(f"/files/{OWNED_KEY}/download")
+    await auth_client.get("/files-by-key/download", params={"key": OWNED_KEY})
+    await auth_client.get("/files-by-key/download", params={"key": OWNED_KEY})
 
     response = await auth_client.get("/files/stats")
     assert response.status_code == 200
@@ -63,7 +63,9 @@ async def test_preview_does_not_increment_downloads(auth_client, monkeypatch):
     )
 
     for _ in range(3):
-        response = await auth_client.get(f"/files/{OWNED_KEY}/preview")
+        response = await auth_client.get(
+            "/files-by-key/preview", params={"key": OWNED_KEY}
+        )
         assert response.status_code == 200
         assert response.json()["url"] == "https://example.com/preview"
 
