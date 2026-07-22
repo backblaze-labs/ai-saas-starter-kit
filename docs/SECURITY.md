@@ -47,6 +47,7 @@ Security principles and implementation for the ai-saas-starter-kit.
 ## Rate Limiting
 
 - Per-IP fixed-window limiter (`app/runtime/ratelimit.py`), configurable via `RATE_LIMIT_PER_MINUTE` (reads) and `RATE_LIMIT_WRITE_PER_MINUTE` (uploads/deletes/downloads). Guards against DoS and Backblaze transaction/egress cost amplification.
+- **`X-Forwarded-For` is NOT trusted by default.** `TRUST_PROXY` is **off** (`false`) — the limiter keys on the real socket peer (`request.client.host`), so a directly-exposed clone can't spoof/rotate the header to mint a fresh bucket per request and defeat the limit. Set `TRUST_PROXY=true` **only** when the app sits behind a known, trusted proxy that appends the real client IP as the rightmost XFF hop (e.g. Railway); then the limiter keys on that hop.
 - `/billing/webhook` is **exempt** — Stripe events arrive from a few shared egress IPs, so limiting them would throttle all customers' events into one bucket; the endpoint is guarded by signature verification instead.
 - In-process, per replica. Horizontal scaling needs a shared store (e.g. Redis) — see [RELIABILITY.md](RELIABILITY.md#rate-limiting).
 
@@ -80,8 +81,9 @@ Security principles and implementation for the ai-saas-starter-kit.
 ## Response Hardening
 
 - Baseline headers on every API response: `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`
+- **Frontend baseline headers** on every route (`apps/web/next.config.ts` `headers()`): `X-Frame-Options: DENY` (anti-clickjacking), `Strict-Transport-Security: max-age=63072000; includeSubDomains` (pins HTTPS for 2 years once served over TLS — a no-op on plain-HTTP localhost), `Referrer-Policy: strict-origin-when-cross-origin`, `X-Content-Type-Options: nosniff`, and a conservative `Permissions-Policy` (`camera=(), microphone=(), geolocation=()`). **No `Content-Security-Policy`** is set: a hardcoded CSP needs env-specific `connect-src` (Supabase + API origins) and would break the app when re-deployed — clickjacking is already covered by `X-Frame-Options: DENY`. Add a CSP per-deployment once the real origins are known.
 - Interactive API docs (`/docs`, `/redoc`, `/openapi.json`) are **off by default**; set `ENABLE_DOCS=true` to expose them (e.g. for local exploration).
-- `/metrics` is gated by an optional `METRICS_TOKEN` bearer token. Empty (default) keeps it open for local dev / a private-network scrape; set it on a public deploy so route templates and traffic/error volumes aren't world-readable.
+- `/metrics` is gated by an optional `METRICS_TOKEN` bearer token. Empty (default) keeps it open for local dev / a private-network scrape; set it on a public deploy so route templates and traffic/error volumes aren't world-readable. When the token is empty, the API **emits a startup WARNING** (structured log) so an operator who shipped the empty default is alerted that `/metrics` is world-readable.
 
 ## Secrets Management
 
