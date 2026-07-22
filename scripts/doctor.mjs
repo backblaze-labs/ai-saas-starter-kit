@@ -251,6 +251,25 @@ function checkEnv() {
       "Fill them to enable Stripe billing / AI generation, or leave the secrets empty — those endpoints return a clean 503 until configured.",
     );
   }
+
+  // Cross-check: Stripe half-configured. A secret key present but a missing
+  // webhook secret or price id is the dangerous silent state — Checkout
+  // succeeds while the subscription→DB webhook 503s, so a user pays but stays
+  // on Free. Fully-empty (unconfigured) Stripe is fine; this warns only the
+  // in-between case, which neither the required nor the placeholder check catch.
+  const stripeKeySet =
+    env.STRIPE_SECRET_KEY && !OPTIONAL_PLACEHOLDERS.has(env.STRIPE_SECRET_KEY);
+  if (stripeKeySet) {
+    const missing = ["STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_PRO", "STRIPE_PRICE_TEAM"].filter(
+      (k) => !env[k] || OPTIONAL_PLACEHOLDERS.has(env[k]),
+    );
+    if (missing.length > 0) {
+      warn(
+        `Stripe is half-configured — ${missing.join(", ")} unset. Checkout will work, but subscriptions won't sync to the database (a user could pay and stay on Free).`,
+        "Run `pnpm stripe:seed` to create the prices and `pnpm stripe:listen` for the webhook secret. See docs/stripe-setup.md.",
+      );
+    }
+  }
 }
 
 // ----- Network -----

@@ -10,15 +10,9 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from app.config import settings
+from app.config import APP_VERSION, settings
 from app.types import FileMetadata
 from app.types.formatting import humanize_bytes
-
-
-# S3 client identity, per the B2 sample standard "<slug>/<version>
-# (backblaze-b2-samples)". Version is hardcoded here (the repo layer must not
-# import the app's version from main — that would be a backward import).
-_USER_AGENT = "b2ai-ai-saas-starter-kit/0.1.0 (backblaze-b2-samples)"
 
 
 def _guess_content_type(key: str) -> str:
@@ -54,7 +48,7 @@ def get_s3_client():
         # sized to the request threadpool (40) so concurrent ops don't queue.
         config=Config(
             signature_version="s3v4",
-            user_agent_extra=_USER_AGENT,
+            user_agent_extra=f"b2ai-ai-saas-starter-kit/{APP_VERSION} (backblaze-b2-samples)",
             connect_timeout=5,
             read_timeout=30,
             retries={"max_attempts": 3, "mode": "standard"},

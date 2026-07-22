@@ -99,11 +99,6 @@ def create_portal_session(*, customer_id: str, return_url: str) -> str:
     return session.url
 
 
-def retrieve_subscription(subscription_id: str) -> dict:
-    """Fetch a subscription object (dict-like) from Stripe."""
-    return stripe.Subscription.retrieve(subscription_id, api_key=_api_key())
-
-
 def construct_event(payload: bytes, sig_header: str) -> dict:
     """Verify a webhook signature and return the event, or raise.
 
