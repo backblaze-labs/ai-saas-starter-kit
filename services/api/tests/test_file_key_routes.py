@@ -86,7 +86,7 @@ async def test_download_route_serves_owned_key(auth_client, monkeypatch, key):
     monkeypatch.setattr(
         files_service,
         "get_presigned_url",
-        lambda requested_key, filename=None: presign_calls.append(requested_key)
+        lambda requested_key, filename=None, disposition="attachment": presign_calls.append(requested_key)
         or f"https://example.test/download/{len(presign_calls)}",
     )
 
@@ -108,7 +108,7 @@ async def test_preview_route_serves_owned_key_without_counting_download(
     monkeypatch.setattr(
         files_service,
         "get_presigned_url",
-        lambda requested_key, filename=None: presign_calls.append(requested_key)
+        lambda requested_key, filename=None, disposition="attachment": presign_calls.append(requested_key)
         or f"https://example.test/preview/{len(presign_calls)}",
     )
 
@@ -163,7 +163,8 @@ async def test_key_routes_404_for_unowned_keys(
     monkeypatch.setattr(
         files_service,
         "get_presigned_url",
-        lambda k, filename=None: repo_calls.append(k) or "https://example.test/file",
+        lambda k, filename=None, disposition="attachment": repo_calls.append(k)
+        or "https://example.test/file",
     )
     monkeypatch.setattr(files_service, "delete_file", lambda k: repo_calls.append(k))
 
@@ -199,7 +200,8 @@ async def test_key_routes_reject_invalid_keys(
     monkeypatch.setattr(
         files_service,
         "get_presigned_url",
-        lambda k, filename=None: repo_calls.append(k) or "https://example.test/file",
+        lambda k, filename=None, disposition="attachment": repo_calls.append(k)
+        or "https://example.test/file",
     )
     monkeypatch.setattr(files_service, "delete_file", lambda k: repo_calls.append(k))
 

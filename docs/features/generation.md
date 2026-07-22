@@ -26,7 +26,7 @@ and its outputs also appear in the B2-backed file manager.
 ## Canonical Files
 - Backend flow: `runtime/generation.py` (thin) → `service/generation.py` →
   `repo/{generation_pipeline,supabase_generation}.py`
-- DB + RLS + grants: `supabase/migrations/20260708210000_generation_files_jobs.sql`
+- DB + RLS + grants: `supabase/migrations/00000000000000_init.sql` (generation section)
 - Genblaze exemplar: `repo/generation_pipeline.py::generate_image`
 
 ## Inputs
@@ -44,10 +44,14 @@ and its outputs also appear in the B2-backed file manager.
 - The `GenerationJob` returned to the client (with its assets).
 
 ## Flow
-- Client POSTs a prompt → `require_plan("pro")` gate (402 for Free).
-- Service inserts a `running` job, runs the Genblaze/NVIDIA pipeline in a
-  threadpool. NVIDIA returns the image inline (base64); the sink transfers it +
-  a manifest to B2.
+- Client POSTs a prompt → `require_plan("pro")` gate (402 for Free) → soft
+  per-user daily quota check (`GENERATION_DAILY_LIMIT`, counts jobs so failed
+  attempts count too) → `429` when exceeded.
+- Service inserts a `running` job, runs the Genblaze/NVIDIA pipeline on a
+  **dedicated** bounded `ThreadPoolExecutor` (`GENERATION_MAX_CONCURRENCY`), NOT
+  the shared request threadpool — so a stuck provider (whose timed-out worker
+  thread can't be force-killed) can't starve file I/O or `/health`. NVIDIA
+  returns the image inline (base64); the sink transfers it + a manifest to B2.
 - Service marks the job `succeeded`, mirrors each asset into `public.files`,
   records the provider run + a usage event, and returns the job.
 - The UI renders each asset via a short-lived presigned preview URL (by B2 key)
@@ -56,7 +60,10 @@ and its outputs also appear in the B2-backed file manager.
 
 ## Edge Cases
 - No `NVIDIA_API_KEY` → `503` (clean "not configured"); the rest of the app runs.
-- Free tier → `402` (locked card links to `/billing`).
+- Free tier → `402` (locked card links to `/billing`). A failed *entitlements*
+  fetch shows a retry, never the locked card (a transient blip must not lock a
+  paying user out).
+- Over the daily quota → `429` before the provider is called (no wasted credits).
 - Provider failure / no asset → job persisted as `failed`, endpoint `502`.
 - Private bucket (no public URL base) → assets still render (presigned preview).
 

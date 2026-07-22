@@ -131,7 +131,7 @@ Either way you get a clean project with no upstream history — ready to push to
 > cd services/api && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
 > cp .env.example .env          # then paste your B2 bucket + app key into .env (step 3)
 > supabase start && node scripts/sync-supabase-env.mjs
-> pnpm dev                      # http://localhost:3000 — the first signup becomes admin
+> pnpm dev                      # http://localhost:3000 — sign up, then grant admin (see below)
 > ```
 >
 > The steps below expand each of these, plus the optional Stripe (step 5) and AI (step 6) setup.
@@ -188,7 +188,7 @@ supabase start                       # boots Postgres + Auth + Studio + Mailpit 
 node scripts/sync-supabase-env.mjs   # writes all three vars above into .env for you
 ```
 
-Local sign-up confirmation and magic-link emails are caught by Mailpit at `http://127.0.0.1:54324` — nothing hits a real inbox. **The first user to sign up becomes an admin.**
+Local sign-up confirmation and magic-link emails are caught by Mailpit at `http://127.0.0.1:54324` — nothing hits a real inbox.
 
 **Hosted (staging/production)** — create a project at [supabase.com](https://supabase.com), then **link the CLI before pushing** so `db push` knows which project to target:
 
@@ -200,7 +200,7 @@ supabase db push                                 # applies the migrations to the
 
 Then copy the three vars from **Project Settings → API** into `.env` (project URL → `NEXT_PUBLIC_SUPABASE_URL`, anon/publishable key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`, service-role key → `SUPABASE_SERVICE_ROLE_KEY`). Full walkthrough in [docs/deployment.md](docs/deployment.md).
 
-> ⚠️ **Hosted admin:** the first user to sign up is auto-promoted to admin (handy locally). On a public hosted deploy, sign up yourself first, or grant admin manually — see [docs/SECURITY.md](docs/SECURITY.md).
+> ℹ️ **Admin:** signups get the default `user` role. After signing up, grant admin explicitly from the Supabase SQL editor — `update public.profiles set role='admin' where email='you@example.com';` — see [docs/SECURITY.md](docs/SECURITY.md).
 
 **5. Set up Stripe billing (optional)**
 
@@ -223,7 +223,7 @@ The marquee `/generate` workflow turns a text prompt into an image via NVIDIA NI
 pnpm dev
 ```
 
-That's it. Frontend at `localhost:3000`, API at `localhost:8000`. Sign up to create your account (the first user is an admin), then upload a file and see it working.
+That's it. Frontend at `localhost:3000`, API at `localhost:8000`. Sign up to create your account (grant yourself admin via SQL — see the admin note above), then upload a file and see it working.
 
 `pnpm dev` runs `pnpm doctor` first — a preflight check that catches the common setup gotchas (wrong Node/Python version, missing venv, missing or placeholder `.env`, ports already taken) and tells you exactly how to fix each one. Run it standalone any time with `pnpm doctor`.
 

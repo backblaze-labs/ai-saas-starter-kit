@@ -46,8 +46,30 @@ The download counter and the `/metrics` counters are **in-process, per replica**
 - Metadata extraction failures don't block upload (return partial metadata)
 - Frontend shows skeleton states while loading, error states on failure
 
+## Resource Isolation & Limits
+
+- **Threadpool isolation**: blocking B2/file work uses Starlette's shared request
+  threadpool, but AI generation (which can hang on a slow provider past its
+  deadline, leaking an unkillable thread) runs on a *dedicated* bounded
+  `ThreadPoolExecutor` (`GENERATION_MAX_CONCURRENCY`) so those leaks can never
+  starve file I/O or `/health`.
+- **Body size**: an ASGI middleware caps request bodies at `MAX_REQUEST_BODY_SIZE`
+  (`413`) before they are buffered — see [SECURITY.md](SECURITY.md#request-body-size-limit).
+- **Backblaze client**: explicit connect/read timeouts, capped retries, and a
+  connection pool sized to the request threadpool, so a hung B2 endpoint fails
+  fast instead of tying up threads.
+- **Per-user listing cache**: `_list_all_objects` caches all prefixes (30s TTL,
+  size-capped, invalidated on any upload/delete) so a dashboard load doesn't
+  re-scan a user's prefixes on every request.
+
 ## Deployment
 
-- Railway health checks on `/health`
-- Zero-downtime deploys via rolling updates
-- Environment-specific configuration via env vars (no config files in prod)
+- Build/start command, `/health` (API) or `/signin` (web) healthcheck, and
+  `ON_FAILURE` restart policy are codified per service in `railway.json`.
+- Zero-downtime deploys via rolling updates.
+- Reproducible builds: exact-pinned `requirements.txt` (API) and
+  `pnpm install --frozen-lockfile` (web).
+- Environment-specific configuration via env vars (no config files in prod).
+- `/health` returns `200` even when B2 is unreachable (body reports
+  `degraded`) — B2 is a shared downstream dependency, so a `503` would restart
+  otherwise-healthy instances during a B2 outage without helping.

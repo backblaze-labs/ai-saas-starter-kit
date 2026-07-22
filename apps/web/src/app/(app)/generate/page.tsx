@@ -19,7 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ui/error-state";
 import { GeneratingLoader } from "@/components/ui/generating-loader";
+import { entitlementViewState } from "@/lib/query-helpers";
 import {
   Card,
   CardContent,
@@ -123,6 +125,9 @@ export default function GeneratePage() {
   const [seed, setSeed] = useState("");
   const [latest, setLatest] = useState<GenerationJob | null>(null);
 
+  // Never treat a failed entitlements fetch as "locked" — that would tell a
+  // paying user to upgrade on a transient blip. Show a retry instead.
+  const entState = entitlementViewState(entitlements);
   const canGenerate = entitlements.data?.can_generate ?? false;
 
   function onSubmit(e: React.FormEvent) {
@@ -155,8 +160,15 @@ export default function GeneratePage() {
         </p>
       </header>
 
-      {entitlements.isPending ? (
+      {entState === "loading" ? (
         <Skeleton className="h-40 w-full" />
+      ) : entState === "error" ? (
+        <ErrorState
+          error={entitlements.error}
+          title="Couldn't check your plan"
+          description="We couldn't load your subscription. Retry in a moment."
+          onRetry={() => entitlements.refetch()}
+        />
       ) : !canGenerate ? (
         <LockedCard />
       ) : (

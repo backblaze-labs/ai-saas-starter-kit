@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   LayoutDashboard,
@@ -27,8 +26,7 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
-import { getFiles } from "@/lib/api-client";
-import type { FileMetadata } from "@ai-saas-starter-kit/shared";
+import { useFiles } from "@/lib/queries";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -49,13 +47,10 @@ const routes = [
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const router = useRouter();
   const { setTheme } = useTheme();
-  const [files, setFiles] = useState<FileMetadata[]>([]);
-
-  // Lazy-load file index when palette opens
-  useEffect(() => {
-    if (!open || files.length > 0) return;
-    getFiles().then(setFiles).catch(() => setFiles([]));
-  }, [open, files.length]);
+  // Lazy-load the file index only while the palette is open, through the shared
+  // TanStack Query cache (deduped with the Files page, cached, and errors handled
+  // globally) rather than a bespoke useEffect + fetch that swallowed failures.
+  const files = useFiles("", 100, open).data ?? [];
 
   const runThen = (fn: () => void) => () => {
     onOpenChange(false);

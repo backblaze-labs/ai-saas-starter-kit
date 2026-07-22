@@ -46,3 +46,15 @@ async def test_write_tier_has_separate_budget(auth_client, monkeypatch):
         "/files-by-key", params={"key": f"uploads/{TEST_USER_ID}/x.txt"}
     )
     assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_stripe_webhook_is_not_rate_limited(client, monkeypatch):
+    # Stripe webhooks arrive from a few shared egress IPs, so the endpoint is
+    # exempt from the per-IP limiter (signature verification is its guard). Even
+    # with a write budget of 1, repeated posts are never 429 — they fall through
+    # to the endpoint (503 here: no STRIPE_WEBHOOK_SECRET configured in tests).
+    monkeypatch.setattr(settings, "rate_limit_write_per_minute", 1)
+
+    statuses = [(await client.post("/billing/webhook")).status_code for _ in range(3)]
+    assert 429 not in statuses

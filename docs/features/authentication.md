@@ -21,7 +21,7 @@ signed-in user, and introduce the first real database (profiles + roles).
 ## Canonical Files
 - Email confirmation landing: `apps/web/src/app/auth/confirm/route.ts` (handles `?code=` and `?token_hash=`)
 - Route protection: `apps/web/src/proxy.ts` + `apps/web/src/lib/supabase/middleware.ts`
-- DB + RLS: `supabase/migrations/20260708170211_auth_profiles_roles.sql`
+- DB + RLS: `supabase/migrations/00000000000000_init.sql` (auth section)
 - API auth: `services/api/app/runtime/auth.py` (thin) → `service/auth.py` → `repo/supabase_auth.py`
 
 ## Inputs

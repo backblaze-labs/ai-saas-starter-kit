@@ -16,7 +16,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.runtime.auth import get_current_user
 from app.runtime.billing import require_plan
 from app.service import generation as generation_service
-from app.service.generation import GenerationConfigError, GenerationError
+from app.service.generation import (
+    GenerationConfigError,
+    GenerationError,
+    GenerationQuotaError,
+)
 from app.types.auth import AuthUser
 from app.types.generation import GenerateRequest, GenerationJob
 
@@ -36,6 +40,8 @@ async def create_generation(
         )
     except GenerationConfigError as e:
         raise HTTPException(status_code=503, detail=str(e)) from None
+    except GenerationQuotaError as e:
+        raise HTTPException(status_code=429, detail=str(e)) from None
     except GenerationError as e:
         raise HTTPException(status_code=502, detail=f"Generation failed: {e}") from None
 

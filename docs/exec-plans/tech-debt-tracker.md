@@ -1,7 +1,43 @@
-<!-- last_verified: 2026-07-16 -->
+<!-- last_verified: 2026-07-20 -->
 # Tech Debt Tracker
 
 Known tech debt items. Agents update this when they discover or create tech debt.
+
+## 2026-07-20 — production-readiness hardening
+
+Resolved on the `production-readiness-hardening` branch (see
+`docs/exec-plans/completed/2026-07-20-production-readiness-hardening.md`):
+double-billing on plan change (checkout 409 + portal routing), open-redirect via
+control chars in `safeNextPath`, unbounded upload body → disk DoS (ASGI body-size
+cap), generation threadpool starvation (dedicated executor) + per-user daily
+quota, `/metrics` gated by optional `METRICS_TOKEN`, first-user auto-admin
+removed, docs off by default, per-user listing now cached, boto3 timeouts/pool,
+webhook exempt from the IP rate-limit, price→free mismatch now logged, PDF inline
+preview, `PyPDF2`→`pypdf`, exact-pinned Python deps + committed `railway.json`,
+and frontend entitlement-error / global-401 handling.
+
+Deliberately **deferred** (not ship blockers; recorded here after red-team review):
+
+- **Stripe event-ordering guard** — a stale/retried `subscription.*` event can
+  still overwrite newer state. A correct fix needs a schema migration (add e.g.
+  `last_stripe_event_at`; compare the *event's* `created`, since a Subscription's
+  own `created` is constant) + read-compare-write. Lower-frequency than the
+  double-billing clobber that was fixed. Priority: Medium.
+- **Shared httpx client / connection pooling** — every Supabase repo opens a
+  fresh `AsyncClient` (2 round-trips per authed request in `get_current_user`). A
+  lifespan-managed singleton trips pytest-asyncio event-loop reuse and isn't
+  exercised by the (fully monkeypatched) tests, so it needs a real integration
+  test alongside it. Priority: Medium (latency, not correctness).
+- **e2e (Playwright) not in CI** — the 4 journey specs need the full stack
+  (Supabase + API + Stripe CLI + mailpit); wiring an ephemeral stack into CI is a
+  separate effort. Run locally with `pnpm test:e2e` as a pre-release gate.
+- **Per-user-scoped list-cache invalidation** — any upload/delete clears the
+  whole listing cache (coarse but correct). Scope invalidation to the mutating
+  user's prefixes at higher tenant counts. Priority: Low.
+- **Generation daily quota is a soft cap** — check-then-create can race a few
+  past the limit. A hard cap needs a DB-side counter. Priority: Low.
+- **`repo/b2_client.py` is at the 300-line limit** — the next change to it should
+  split the listing-cache helpers into their own module. Priority: Low.
 
 ## 2026-07-16 — verify
 
@@ -18,9 +54,9 @@ Nitpicks surfaced by the verify pass on the file surface (logged, not blocking; 
 | Description | Impact | Proposed Resolution | Priority |
 |---|---|---|---|
 | Download counter & `/metrics` not durable across restart/replicas | Counter resets on redeploy (ephemeral FS); both fragment across replicas | Back the counter with a shared store (Redis/DB); label/aggregate metrics per instance. Now isolated in `repo/counter.py` and documented in RELIABILITY.md | Medium |
-| Upload buffers the whole file in memory | ~3× file size RAM per upload; large files strain the server (event loop no longer blocked, but memory unbounded) | Stream to a temp file, or S3 multipart above a size threshold | Medium |
-| `get_upload_activity` re-materializes `FileMetadata` for every object just to bucket dates | Wasted O(n) CPU per `/files/stats/activity` (scan is cached; materialization is not) | Aggregate from raw listing dicts like `get_upload_stats` does | Low |
-| Frontend has only pure-logic unit tests; no component/render tests, and e2e only checks routing | UI states (loading/error/empty) and the real upload→delete journey are unverified | Add jsdom + @testing-library/react render tests; a fixture-driven upload e2e | Medium |
+| Upload buffers the whole file in memory | The disk-exhaustion DoS is fixed (an ASGI body cap rejects oversized bodies before form parsing), but a valid upload up to `max_file_size` is still read into RAM (~2× transiently) | Stream to B2 multipart above a size threshold; cap concurrent uploads | Medium |
+| `get_upload_activity` re-materializes `FileMetadata` for every object just to bucket dates | Wasted O(n) CPU per `/files/stats/activity` (the prefix scan is now cached; the materialization is not) | Aggregate dates straight from the raw listing dicts instead of building `FileMetadata` | Low |
+| No component/render tests (pure-logic units only); e2e not in CI | Render-time UI states aren't asserted. Plan-gating and 401-signout decisions were extracted to pure `lib/query-helpers.ts` (unit-tested), but component rendering still isn't | Add jsdom + @testing-library/react render tests; wire `test:e2e` into CI with an ephemeral stack | Medium |
 | Allowed file types hardcoded in `service/upload.py` | Reuse friction — each new app edits source to change accepted types | Make `ALLOWED_TYPES` / `MIME_EXTENSION_MAP` env-configurable | Low |
 | No `docker-compose.yaml` | Manual venv + dual-process startup slows first run | Add compose with `web` + `api` services and Dockerfiles | Low |
 | `api-client.ts` hand-synced to FastAPI | Endpoint drift between client and server | Note an OpenAPI codegen strategy or link the spec | Low |
@@ -32,6 +68,20 @@ Nitpicks surfaced by the verify pass on the file surface (logged, not blocking; 
 
 | Description | Resolution |
 |---|---|
+| Double-billing: an active subscriber hitting Checkout opened a 2nd Stripe subscription | `create_checkout_url` 409s an active sub; the billing UI routes existing subscribers to the Billing Portal (`service/billing.py`, `billing/page.tsx`) |
+| Open redirect: `safeNextPath` missed control chars the URL parser strips | Reject any `\x00-\x1f\x7f` char pre-parse (`lib/safe-redirect.ts`) |
+| Unbounded upload body spooled to disk before the size check (disk DoS) | ASGI `BodySizeLimitMiddleware` rejects on Content-Length AND meters the stream, inner to CORS (`runtime/bodylimit.py`) |
+| Generation could starve the shared request threadpool (leaked timed-out threads) | Blocking pipeline runs on a dedicated bounded `ThreadPoolExecutor` (`service/generation.py`) |
+| No cost ceiling on paid generation | Soft per-user daily job quota → 429 (`generation_daily_limit`) |
+| `/metrics` world-readable (route + traffic-volume leak) | Optional `METRICS_TOKEN` bearer gate; stays open when unset for local/private scrape |
+| First signup auto-promoted to admin (public-deploy takeover) | Auto-promote branch removed from `handle_new_user` in the init schema; admin granted explicitly via SQL |
+| Per-user file listings bypassed the cache (≈6 uncached B2 scans/dashboard) | `_list_all_objects` caches all prefixes (size-capped); dead empty-prefix `get_upload_stats` removed |
+| boto3 had no timeouts/retry cap; pool(10) < threadpool(40) | Explicit `connect/read_timeout`, capped retries, `max_pool_connections=40` |
+| Stripe webhook throttled by the per-IP limiter | `/billing/webhook` exempt from rate-limiting (signature-verified) |
+| PDF preview downloaded instead of rendering (forced `attachment`) | `inline` disposition for previews; `attachment` kept for real downloads |
+| `PyPDF2` deprecated/EOL | Migrated to maintained `pypdf` |
+| Unpinned Python deps / non-reproducible build | Exact `==` pins in `requirements.txt`; committed `railway.json` per service |
+| Interactive docs (`/docs`) exposed by default | `ENABLE_DOCS` defaults off |
 | Blocking boto3 in `async def` handlers froze the single event loop | B2 handlers are sync `def` (Starlette threadpool); upload offloads via `run_in_threadpool` |
 | Full-bucket scan on every list/stats/activity request, uncached | Short-TTL cache in `repo/b2_client._list_all_objects`, invalidated on upload/delete |
 | No CI — quality gates ran only when a human remembered | `.github/workflows/ci.yml` runs web + API gates on PR and push to `main` |

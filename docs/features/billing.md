@@ -23,7 +23,7 @@ reusable plan-gating dependency that locks features behind a tier.
 
 ## Canonical Files
 - Backend flow: `runtime/billing.py` (thin) → `service/billing.py` → `repo/{stripe_client,supabase_billing}.py`
-- DB + RLS: `supabase/migrations/20260708191053_billing_plans_subscriptions.sql`
+- DB + RLS: `supabase/migrations/00000000000000_init.sql` (billing section)
 - Plan-gating exemplar: `require_plan("pro")` guarding `GET /billing/pro/preview`
 
 ## Inputs
@@ -39,9 +39,15 @@ reusable plan-gating dependency that locks features behind a tier.
 - Side effect: entitlements (`tier`, `can_generate`) recomputed from the synced row.
 
 ## Flow
-- User clicks **Upgrade** → `POST /billing/checkout` creates a subscription-mode
-  Checkout Session (user id in `client_reference_id` + subscription metadata) →
-  browser redirects to Stripe → pays with test card `4242 4242 4242 4242`.
+- A **Free** user clicks **Upgrade** → `POST /billing/checkout` creates a
+  subscription-mode Checkout Session (user id in `client_reference_id` +
+  subscription metadata) → browser redirects to Stripe → pays with test card
+  `4242 4242 4242 4242`.
+- An **existing subscriber** changing plans is routed to the **Billing Portal**
+  (which swaps/prorates the current subscription), not a new Checkout. The
+  checkout endpoint hard-guards this too: `409` if the caller already has an
+  active subscription, because a second subscription-mode Checkout would open a
+  *concurrent* Stripe subscription and double-bill.
 - Stripe POSTs `customer.subscription.*` to `/billing/webhook` → signature
   verified → event deduped via `stripe_events` → subscription upserted into
   Supabase with the tier derived from the price id.
@@ -61,12 +67,16 @@ reusable plan-gating dependency that locks features behind a tier.
   the `4242…` test-card hint on the Billing page, so it never shows in live mode.
 - Bad/absent webhook signature → `400`; missing `STRIPE_WEBHOOK_SECRET` → `503`.
 - Duplicate event id → no-op (`{"status":"duplicate"}`).
-- Unknown/unpriced plan on checkout → `400`.
+- Unknown/unpriced plan on checkout → `400`. Active subscriber on checkout → `409` (use the portal).
+- A live subscription whose price maps to no tier (misconfigured `STRIPE_PRICE_*`) is logged as a WARNING rather than silently written as `free`, so a locked-out paying customer is diagnosable.
 - `customer.subscription.deleted` → downgrades the user to `free` (status `canceled`).
 - Event ordering: `checkout.session.completed` and `customer.subscription.created`
   race on the same per-user row. Because checkout writes only id columns (and the
   merge-upsert overwrites only the columns it sends), a paid `pro`/`active` row is
   never clobbered back to `free`/`incomplete` regardless of which lands last.
+  A stale/retried `customer.subscription.updated` overwriting newer state is a
+  narrower remaining gap (needs an event-timestamp guard + a schema column) —
+  tracked in the tech-debt tracker, not yet closed.
 
 ## UX States
 - Empty/Free: three plan cards, current plan = `FREE`, Pro preview locked.

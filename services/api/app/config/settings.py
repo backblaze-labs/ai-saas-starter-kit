@@ -75,12 +75,21 @@ class Settings(BaseSettings):
     generation_deadline: int = 120
     # B2 key prefix for generated assets: generated/{user_id}/{date}/{run_id}/...
     generation_prefix: str = "generated"
+    # Max concurrent generations across the process. Runs on a DEDICATED thread
+    # pool (see service/generation.py) so a stuck provider can't starve the
+    # request threadpool that serves file I/O + /health. Keep well under the
+    # request pool size.
+    generation_max_concurrency: int = 4
+    # Soft per-user daily cap on generation attempts (counts jobs created today,
+    # so repeated failures also count — a paid feature spends real provider
+    # credits). 0 disables the cap.
+    generation_daily_limit: int = 50
 
     api_port: int = 8000
-    # Interactive API docs (/docs, /redoc, /openapi.json). On by default for
-    # local dev and starter-kit exploration; set false to hide the full API
-    # surface in production.
-    enable_docs: bool = True
+    # Interactive API docs (/docs, /redoc, /openapi.json). OFF by default so a
+    # production deploy doesn't expose the full API surface. Set ENABLE_DOCS=true
+    # locally for starter-kit exploration.
+    enable_docs: bool = False
     # Explicit allowlist by default — covers Next on :3000 and the
     # fallback :3001 it picks if 3000 is busy. Production deploys should
     # override with the exact frontend origin.
@@ -93,6 +102,10 @@ class Settings(BaseSettings):
 
     # Upload limits
     max_file_size: int = 100 * 1024 * 1024  # 100MB
+    # Hard ceiling on any request body, enforced at the ASGI layer (see
+    # runtime/bodylimit.py) BEFORE FastAPI buffers a multipart upload to disk.
+    # Sized a little above max_file_size to leave room for multipart framing.
+    max_request_body_size: int = 105 * 1024 * 1024  # ~105MB
 
     # Optional confinement for key-addressed reads/deletes. Empty by default so
     # the by-key routes accept any key shape (they deliberately support nested
@@ -115,6 +128,12 @@ class Settings(BaseSettings):
     # Small durable counters (downloads, etc). Point at a persistent
     # volume in production if you care about surviving restarts.
     download_count_file: str = "data/download_count.json"
+
+    # Optional bearer token gating /metrics. Empty by default (open — fine for
+    # local dev or a private-network scrape). Set it in a public production
+    # deploy so the metrics surface isn't world-readable; the Prometheus scraper
+    # then sends `Authorization: Bearer <token>`.
+    metrics_token: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

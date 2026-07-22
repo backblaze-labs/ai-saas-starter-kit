@@ -29,6 +29,7 @@ from app.runtime import (  # noqa: E402
     ratelimit,
     upload,
 )
+from app.runtime.bodylimit import BodySizeLimitMiddleware  # noqa: E402
 
 # --- Startup validation ---
 # Required B2 settings are declared with empty-string defaults so that
@@ -167,8 +168,14 @@ app = FastAPI(
 # masking the real server bug. So: register the inner middleware FIRST, CORS
 # LAST. Do not reorder these two without re-reading this comment.
 
-# Rate limiting (innermost). Registered first so it sits inside timing: a 429
-# is a normal response that timing records and CORS still wraps with headers.
+# Body-size limit (innermost). Registered first so it directly wraps the app:
+# it rejects an oversized body at the ASGI layer BEFORE FastAPI buffers a
+# multipart upload to disk, and its 413 still flows out through timing (recorded)
+# and CORS (headers).
+app.add_middleware(BodySizeLimitMiddleware, max_body_size=settings.max_request_body_size)
+
+# Rate limiting. Registered inside timing: a 429 is a normal response that timing
+# records and CORS still wraps with headers.
 app.add_middleware(BaseHTTPMiddleware, dispatch=ratelimit.rate_limit_middleware)
 
 # Request ID + timing middleware. Its except-clause is the catch-all
