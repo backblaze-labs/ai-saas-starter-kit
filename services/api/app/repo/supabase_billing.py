@@ -55,13 +55,47 @@ async def get_subscription(user_id: str) -> dict | None:
 
 
 async def upsert_subscription(row: dict) -> None:
-    """Insert or update the per-user subscription row (conflict on user_id)."""
+    """Merge-upsert the per-user subscription row (conflict on user_id).
+
+    ON CONFLICT overwrites only the columns present in `row`; omitted columns
+    keep their prior value. Used by the checkout path, which writes ONLY the
+    Stripe id mapping so it never clobbers a tier/status the subscription event
+    already set (see service._sync_from_checkout)."""
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.post(
             f"{settings.supabase_url}/rest/v1/subscriptions",
             params={"on_conflict": "user_id"},
             headers={**_service_headers(), "Prefer": "resolution=merge-duplicates"},
             json=row,
+        )
+    resp.raise_for_status()
+
+
+async def apply_subscription_event(row: dict, *, event_created_at: int | None) -> None:
+    """Apply a customer.subscription.* event to the user's row, rejecting stale
+    ones. Delegates to the `apply_subscription_event` Postgres function via RPC
+    so the freshness comparison against `last_event_created_at` is atomic in the
+    DB — a read-compare-write here would race under concurrent webhook
+    deliveries (Stripe does not guarantee ordered delivery). An out-of-order
+    (older) event is a no-op server-side.
+
+    `event_created_at` is the Stripe EVENT's `created` (unix seconds), NOT the
+    Subscription object's constant `created`."""
+    payload = {
+        "p_user_id": row["user_id"],
+        "p_plan_id": row["plan_id"],
+        "p_status": row["status"],
+        "p_stripe_customer_id": row.get("stripe_customer_id"),
+        "p_stripe_subscription_id": row.get("stripe_subscription_id"),
+        "p_current_period_end": row.get("current_period_end"),
+        "p_cancel_at_period_end": row.get("cancel_at_period_end", False),
+        "p_event_created_at": event_created_at,
+    }
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.post(
+            f"{settings.supabase_url}/rest/v1/rpc/apply_subscription_event",
+            headers=_service_headers(),
+            json=payload,
         )
     resp.raise_for_status()
 

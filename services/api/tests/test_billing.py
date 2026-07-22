@@ -12,6 +12,7 @@ import hmac
 import json
 import time
 
+import httpx
 import pytest
 from fastapi import HTTPException
 
@@ -39,10 +40,14 @@ def _sub_event(
     status: str = "active",
     event_type: str = "customer.subscription.updated",
     event_id: str = "evt_test_1",
+    created: int | None = 1_700_000_000,
 ) -> dict:
     return {
         "id": event_id,
         "type": event_type,
+        # Stripe EVENT.created (unix seconds) — orders subscription events. Pass
+        # created=None to model a webhook whose timestamp is absent.
+        "created": created,
         "data": {
             "object": {
                 "id": "sub_test_1",
@@ -105,6 +110,21 @@ class FakeBillingStore:
         base = self.subs.get(uid) or db_defaults
         self.subs[uid] = {**base, **row}
 
+    async def apply_subscription_event(self, row: dict, *, event_created_at: int | None) -> None:
+        # Model the `apply_subscription_event` Postgres function's freshness
+        # guard: the ON CONFLICT branch fires only when the incoming event is
+        # same-or-newer, or ordering is impossible (row has no prior event, or
+        # the incoming event has no timestamp). A staler event is a no-op.
+        uid = row["user_id"]
+        existing = self.subs.get(uid)
+        if existing is not None:
+            prev = existing.get("last_event_created_at")
+            if prev is not None and event_created_at is not None and event_created_at < prev:
+                return  # staler event — DB WHERE guard rejects it
+        db_defaults = {"plan_id": "free", "status": "inactive", "cancel_at_period_end": False}
+        base = existing or db_defaults
+        self.subs[uid] = {**base, **row, "last_event_created_at": event_created_at}
+
     async def get_subscription(self, user_id: str) -> dict | None:
         return self.subs.get(user_id)
 
@@ -112,7 +132,13 @@ class FakeBillingStore:
 @pytest.fixture
 def fake_store(monkeypatch):
     store = FakeBillingStore()
-    for name in ("event_seen", "record_event", "upsert_subscription", "get_subscription"):
+    for name in (
+        "event_seen",
+        "record_event",
+        "upsert_subscription",
+        "apply_subscription_event",
+        "get_subscription",
+    ):
         monkeypatch.setattr(supabase_billing, name, getattr(store, name))
     return store
 
@@ -190,6 +216,155 @@ async def test_webhook_deletion_downgrades_to_free(monkeypatch, fake_store):
     row = fake_store.subs["u-1"]
     assert row["plan_id"] == "free"
     assert row["status"] == "canceled"
+
+
+# --- out-of-order subscription events (event-ordering guard) ---------------
+# Stripe does not guarantee ordered delivery, so a stale/retried
+# customer.subscription.* can arrive after a newer one. The freshness guard
+# lives in the `apply_subscription_event` Postgres function; these tests mock
+# the repo, so they assert the SERVICE threads the event's `created` through and
+# that the guard's semantics (modelled in FakeBillingStore) hold. They do NOT
+# execute the SQL — the guard itself is exercised by the RPC-payload test below
+# plus manual/e2e DB runs.
+
+
+@pytest.mark.asyncio
+async def test_stale_subscription_update_is_noop(monkeypatch, fake_store):
+    """(a) An older customer.subscription.updated arriving AFTER a newer one
+    must not overwrite the newer state."""
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_team", "price_team_test")
+
+    # Newer event lands first: team/active at t=2000.
+    newer = _sub_event(
+        price_id="price_team_test", event_id="evt_new", created=2_000_000_000
+    )
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: newer)
+    await billing_service.handle_webhook(b"{}", "sig")
+    assert fake_store.subs["u-1"]["plan_id"] == "team"
+
+    # Older event (t=1000) is processed last — it downgrades to pro in its
+    # payload but must be rejected by the freshness guard.
+    older = _sub_event(
+        price_id="price_pro_test", event_id="evt_old", created=1_000_000_000
+    )
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: older)
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "team", "stale event clobbered newer tier"
+    assert row["last_event_created_at"] == 2_000_000_000
+
+
+@pytest.mark.asyncio
+async def test_newer_subscription_update_applies(monkeypatch, fake_store):
+    """(b) A newer event arriving after an older one applies normally."""
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_team", "price_team_test")
+
+    older = _sub_event(
+        price_id="price_pro_test", event_id="evt_a", created=1_000_000_000
+    )
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: older)
+    await billing_service.handle_webhook(b"{}", "sig")
+    assert fake_store.subs["u-1"]["plan_id"] == "pro"
+
+    newer = _sub_event(
+        price_id="price_team_test", event_id="evt_b", created=2_000_000_000
+    )
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: newer)
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "team"
+    assert row["last_event_created_at"] == 2_000_000_000
+
+
+@pytest.mark.asyncio
+async def test_first_subscription_event_applies_on_new_row(monkeypatch, fake_store):
+    """(c) The first subscription event on a brand-new row applies (no prior
+    last_event_created_at to compare against)."""
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    evt = _sub_event(event_id="evt_first", created=1_500_000_000)
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: evt)
+
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "pro"
+    assert row["status"] == "active"
+    assert row["last_event_created_at"] == 1_500_000_000
+
+
+@pytest.mark.asyncio
+async def test_absent_event_created_still_applies(monkeypatch, fake_store):
+    """(d) A webhook with no `created` timestamp can't be ordered, so it must
+    still apply (guard treats NULL as 'apply') and land None in the column."""
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    evt = _sub_event(event_id="evt_no_ts", created=None)
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: evt)
+
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "pro"
+    assert row["last_event_created_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_apply_subscription_event_builds_rpc_call(monkeypatch):
+    """The repo must POST the subscription-event upsert to the RPC endpoint with
+    the p_-prefixed function params (incl. the event's created timestamp) and
+    the service-role auth headers. This asserts the request the DB function
+    receives; the SQL guard itself is not executed here (no live Postgres)."""
+    monkeypatch.setattr(supabase_billing.settings, "supabase_url", "https://db.example")
+    monkeypatch.setattr(
+        supabase_billing.settings, "supabase_service_role_key", "svc-role-key"
+    )
+
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["method"] = request.method
+        captured["auth"] = request.headers.get("Authorization")
+        captured["apikey"] = request.headers.get("apikey")
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(204)
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        supabase_billing.httpx,
+        "AsyncClient",
+        lambda **kw: real_client(transport=transport, **kw),
+    )
+
+    row = {
+        "user_id": "u-1",
+        "plan_id": "pro",
+        "status": "active",
+        "stripe_customer_id": "cus_1",
+        "stripe_subscription_id": "sub_1",
+        "current_period_end": "2030-01-01T00:00:00+00:00",
+        "cancel_at_period_end": False,
+    }
+    await supabase_billing.apply_subscription_event(row, event_created_at=1_700_000_000)
+
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://db.example/rest/v1/rpc/apply_subscription_event"
+    assert captured["auth"] == "Bearer svc-role-key"
+    assert captured["apikey"] == "svc-role-key"
+    assert captured["body"] == {
+        "p_user_id": "u-1",
+        "p_plan_id": "pro",
+        "p_status": "active",
+        "p_stripe_customer_id": "cus_1",
+        "p_stripe_subscription_id": "sub_1",
+        "p_current_period_end": "2030-01-01T00:00:00+00:00",
+        "p_cancel_at_period_end": False,
+        "p_event_created_at": 1_700_000_000,
+    }
 
 
 @pytest.mark.asyncio
