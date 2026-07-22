@@ -119,6 +119,24 @@ class UploadError(Exception):
         super().__init__(detail)
 
 
+def check_upload_type(filename: str, content_type: str) -> None:
+    """Validate the declared MIME type and its extension. Raises UploadError(415).
+
+    These checks depend only on headers/filename — not the body — so the runtime
+    layer can call this to reject a disallowed upload BEFORE buffering the body
+    into memory. `process_upload` reuses it so the rule lives in exactly one
+    place (the body-dependent checks — signature, size, emptiness — stay there).
+    """
+    if content_type not in ALLOWED_TYPES:
+        raise UploadError(f"File type '{content_type}' not allowed", status_code=415)
+
+    if not validate_extension_matches_type(sanitize_filename(filename), content_type):
+        raise UploadError(
+            "File extension does not match declared content type",
+            status_code=415,
+        )
+
+
 def process_upload(
     file_data: bytes,
     filename: str,
@@ -141,18 +159,12 @@ def process_upload(
             status_code=413,
         )
 
-    if content_type not in ALLOWED_TYPES:
-        raise UploadError(
-            f"File type '{content_type}' not allowed", status_code=415
-        )
+    # Type/extension gate — the runtime layer runs this pre-buffer too, so a
+    # disallowed type never reaches here; kept here for direct callers (tests,
+    # future entry points) and to keep the rule in one place.
+    check_upload_type(filename, content_type)
 
     safe_name = sanitize_filename(filename)
-
-    if not validate_extension_matches_type(safe_name, content_type):
-        raise UploadError(
-            "File extension does not match declared content type",
-            status_code=415,
-        )
 
     if len(file_data) == 0:
         raise UploadError("Empty file")

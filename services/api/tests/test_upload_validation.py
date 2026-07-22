@@ -5,6 +5,7 @@ import pytest
 from app.service import upload as upload_service
 from app.service.upload import (
     UploadError,
+    check_upload_type,
     matches_content_signature,
     sanitize_filename,
     validate_extension_matches_type,
@@ -134,6 +135,51 @@ def test_rejects_content_signature_mismatch():
 def test_rejects_empty_file():
     with pytest.raises(UploadError):
         process_upload(b"", "a.txt", "text/plain", content_length=0)
+
+
+# --- check_upload_type (pre-buffer gate) ------------------------------------
+
+
+def test_check_upload_type_allows_matching_type():
+    # Allowed type + consistent extension → no raise.
+    assert check_upload_type("photo.jpg", "image/jpeg") is None
+
+
+def test_check_upload_type_rejects_disallowed_type():
+    with pytest.raises(UploadError) as exc:
+        check_upload_type("a.exe", "application/x-msdownload")
+    assert exc.value.status_code == 415
+
+
+def test_check_upload_type_rejects_extension_mismatch():
+    with pytest.raises(UploadError) as exc:
+        check_upload_type("a.png", "text/plain")
+    assert exc.value.status_code == 415
+
+
+@pytest.mark.asyncio
+async def test_disallowed_type_rejected_before_buffering(auth_client, monkeypatch):
+    """A disallowed content-type returns 415 without the body ever being
+    buffered or processed — the pre-check short-circuits before the read loop
+    and the concurrency slot."""
+    from app.runtime import upload as upload_route
+
+    processed = False
+
+    async def fail_if_processed(*args, **kwargs):
+        nonlocal processed
+        processed = True
+        raise AssertionError("process_upload must not run for a disallowed type")
+
+    # Spy on the runtime-bound symbol the handler actually calls.
+    monkeypatch.setattr(upload_route, "run_in_threadpool", fail_if_processed)
+
+    resp = await auth_client.post(
+        "/upload",
+        files={"file": ("evil.exe", b"MZ" + b"\x00" * 4096, "application/x-msdownload")},
+    )
+    assert resp.status_code == 415
+    assert processed is False
 
 
 # --- uploads_total metric increments ----------------------------------------

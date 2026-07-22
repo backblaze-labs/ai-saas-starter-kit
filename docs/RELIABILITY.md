@@ -55,6 +55,19 @@ The download counter and the `/metrics` counters are **in-process, per replica**
   starve file I/O or `/health`.
 - **Body size**: an ASGI middleware caps request bodies at `MAX_REQUEST_BODY_SIZE`
   (`413`) before they are buffered — see [SECURITY.md](SECURITY.md#request-body-size-limit).
+- **Upload memory & concurrency**: each upload buffers its **entire body in
+  memory** (`list[bytes]` joined into one `bytes`) before the B2 put — worst-case
+  ~`MAX_FILE_SIZE` of RAM per in-flight upload. Two guards bound the exposure:
+  - The type/extension gate now runs **pre-buffer** in `runtime/upload.py` (via
+    the service helper `check_upload_type`), so a **disallowed** type is rejected
+    with `415` before any body is read. This is the whole win of that gate —
+    **allowed** files are still fully buffered; it does not stream them to B2.
+  - An `asyncio.Semaphore` (`MAX_CONCURRENT_UPLOADS`, default 4) caps how many
+    uploads buffer+process at once, so peak upload memory is bounded by
+    `MAX_CONCURRENT_UPLOADS * MAX_FILE_SIZE` regardless of request volume; excess
+    requests wait for a slot. Lowering the default protects a smaller instance.
+    To remove the per-file buffering entirely, stream directly to B2 (multipart)
+    — tracked as future work, not done here.
 - **Backblaze client**: explicit connect/read timeouts, capped retries, and a
   connection pool sized to the request threadpool, so a hung B2 endpoint fails
   fast instead of tying up threads.

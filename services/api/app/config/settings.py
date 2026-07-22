@@ -102,6 +102,12 @@ class Settings(BaseSettings):
 
     # Upload limits
     max_file_size: int = 100 * 1024 * 1024  # 100MB
+    # Max concurrent in-flight uploads across the process. Each upload buffers
+    # its whole body in memory (see docs/RELIABILITY.md), so worst-case upload
+    # memory is bounded by this * max_file_size — the gate that keeps N large
+    # concurrent uploads from OOM-ing a small instance. Enforced by an
+    # asyncio.Semaphore in runtime/upload.py; excess requests wait for a slot.
+    max_concurrent_uploads: int = 4
     # Hard ceiling on any request body, enforced at the ASGI layer (see
     # runtime/bodylimit.py) BEFORE FastAPI buffers a multipart upload to disk.
     # Sized a little above max_file_size to leave room for multipart framing.
