@@ -48,6 +48,7 @@ Billing + auth also require (see `.env.example` for the full list):
 |----------|-------|
 | `ENABLE_DOCS` | Leave unset/`false` in production — hides `/docs`, `/redoc`, `/openapi.json` (defaults off) |
 | `METRICS_TOKEN` | Set a random token so `/metrics` isn't world-readable; the scraper sends `Authorization: Bearer <token>` |
+| `TRUST_PROXY` | Set to `true` — Railway terminates TLS at its edge proxy, so the real client IP arrives in `X-Forwarded-For`. Left unset, the rate limiter keys on Railway's proxy socket peer, collapsing every client into one shared bucket (one busy user throttles everyone). Only enable behind a trusted proxy that appends `X-Forwarded-For`. |
 
 After the first deploy, grant yourself admin explicitly (the first signup is **not**
 auto-promoted): `update public.profiles set role='admin' where email='you@…';`
