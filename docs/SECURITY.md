@@ -19,6 +19,15 @@ Security principles and implementation for the ai-saas-starter-kit.
   trusting `getSession()`.
 - The API validates bearer tokens by calling Supabase `/auth/v1/user` (portable across
   local HS256 and hosted asymmetric signing keys — no secret assumptions).
+- **Identity is cached; authorization is not.** The `/auth/v1/user` identity lookup is
+  memoized for a short TTL (`AUTH_CACHE_TTL_SECONDS`, default 30s), keyed by a SHA-256
+  hash of the bearer token (never the raw token, so plaintext tokens aren't held in
+  memory). This drops one of the two per-request Supabase round-trips on a warm hit. The
+  role/authorization decision (`/rest/v1/profiles`) is **never cached** — it is fetched
+  live on every request, so a demoted admin loses access immediately (no
+  privilege-escalation window). Tradeoff: a revoked or rotated token stays accepted for
+  up to the TTL because identity is cached. Set `AUTH_CACHE_TTL_SECONDS=0` to disable the
+  cache and revalidate identity on every request.
 - **Row Level Security** is enabled on `profiles` and `roles`: a user reads/updates only
   their own profile; admins (`is_admin()`) may read/update all. A trigger
   (`prevent_role_escalation`) blocks non-admins from changing their own role.
