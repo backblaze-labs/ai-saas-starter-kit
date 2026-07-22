@@ -124,6 +124,13 @@ class Settings(BaseSettings):
     # Covers uploads, deletes, downloads and previews — kept generous enough
     # that a normal browsing/upload session doesn't trip it.
     rate_limit_write_per_minute: int = 60
+    # Whether to trust `X-Forwarded-For` for the client IP. OFF by default: a
+    # directly-exposed deploy must key the limiter on the real socket peer
+    # (`request.client.host`), because a client can spoof/rotate XFF to mint a
+    # fresh limiter bucket per request and defeat the limit. Enable ONLY when the
+    # app sits behind a known, trusted proxy that appends the real client IP as
+    # the rightmost XFF hop (e.g. Railway); see docs/SECURITY.md.
+    trust_proxy: bool = False
 
     # Small durable counters (downloads, etc). Point at a persistent
     # volume in production if you care about surviving restarts.

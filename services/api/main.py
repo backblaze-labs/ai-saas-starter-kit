@@ -111,6 +111,17 @@ async def lifespan(_app: "FastAPI"):
             + ", ".join(missing_supabase)
             + f". Add them to {REPO_ROOT_ENV} (see .env.example) and restart."
         )
+
+    # /metrics is world-readable when no METRICS_TOKEN is set — fine for local
+    # dev or a private-network scrape, but on a public deploy it leaks route
+    # templates and traffic/error volumes. Warn loudly at boot so an operator who
+    # shipped the empty default sees it; the auth logic itself stays untouched.
+    if not settings.metrics_token:
+        logger.warning(
+            "METRICS_TOKEN is empty: /metrics is reachable without "
+            "authentication. Set METRICS_TOKEN on any public deploy so route "
+            "templates and traffic/error volumes are not world-readable."
+        )
     yield
 
 # --- Structured JSON logging ---

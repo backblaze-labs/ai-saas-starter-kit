@@ -58,3 +58,50 @@ async def test_stripe_webhook_is_not_rate_limited(client, monkeypatch):
 
     statuses = [(await client.post("/billing/webhook")).status_code for _ in range(3)]
     assert 429 not in statuses
+
+
+@pytest.mark.asyncio
+async def test_xff_ignored_when_trust_proxy_off(client, monkeypatch):
+    # Default (trust_proxy=False): a directly-exposed deploy must NOT trust
+    # X-Forwarded-For. A client rotating the header per request must not mint a
+    # fresh bucket each time — all requests key on the real socket peer, so the
+    # limit is shared and the 3rd (over a budget of 2) is rejected.
+    assert settings.trust_proxy is False
+    monkeypatch.setattr(settings, "rate_limit_per_minute", 2)
+
+    statuses = [
+        (
+            await client.get(
+                "/health", headers={"X-Forwarded-For": f"{i}.{i}.{i}.{i}"}
+            )
+        ).status_code
+        for i in range(3)
+    ]
+    assert statuses == [200, 200, 429]
+
+
+@pytest.mark.asyncio
+async def test_xff_honored_when_trust_proxy_on(client, monkeypatch):
+    # Behind a trusted proxy (trust_proxy=True): the limiter keys on the
+    # rightmost XFF hop, so distinct client IPs get distinct buckets and none is
+    # throttled even though they exceed a single bucket's budget.
+    monkeypatch.setattr(settings, "trust_proxy", True)
+    monkeypatch.setattr(settings, "rate_limit_per_minute", 2)
+
+    statuses = [
+        (
+            await client.get(
+                "/health", headers={"X-Forwarded-For": f"{i}.{i}.{i}.{i}"}
+            )
+        ).status_code
+        for i in range(4)
+    ]
+    assert statuses == [200, 200, 200, 200]
+
+    # Same trusted-proxy client IP still shares one bucket — the 3rd trips.
+    same_ip = {"X-Forwarded-For": "10.0.0.9"}
+    repeat = [
+        (await client.get("/health", headers=same_ip)).status_code
+        for _ in range(3)
+    ]
+    assert repeat == [200, 200, 429]

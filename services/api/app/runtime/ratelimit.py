@@ -39,17 +39,23 @@ _EXEMPT_PATHS = frozenset({"/billing/webhook"})
 def _client_ip(request: Request) -> str:
     """Best-effort client IP.
 
-    Trust only the RIGHTMOST `X-Forwarded-For` entry — the address the trusted
-    edge proxy (Railway) appended. The leftmost entries are client-supplied and
-    trivially spoofable; keying on them would let a caller mint a fresh limiter
-    bucket per request (bypassing the limit and ballooning `_state`). Behind
-    multiple proxies, adjust the trusted-hop selection accordingly.
+    XFF is trusted ONLY when `settings.trust_proxy` is set — i.e. the app sits
+    behind a known edge proxy (e.g. Railway). In that case use the RIGHTMOST
+    `X-Forwarded-For` entry, the address the trusted proxy appended; the leftmost
+    entries are client-supplied and trivially spoofable. Behind multiple proxies,
+    adjust the trusted-hop selection accordingly.
+
+    When `trust_proxy` is off (the default, for a directly-exposed deploy) XFF is
+    ignored entirely and the limiter keys on the real socket peer
+    (`request.client.host`) — otherwise a client could spoof/rotate XFF to mint a
+    fresh limiter bucket per request, bypassing the limit and ballooning `_state`.
     """
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        hop = xff.split(",")[-1].strip()
-        if hop:
-            return hop
+    if settings.trust_proxy:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            hop = xff.split(",")[-1].strip()
+            if hop:
+                return hop
     return request.client.host if request.client else "unknown"
 
 
