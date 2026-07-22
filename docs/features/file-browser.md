@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-16 -->
+<!-- last_verified: 2026-07-21 -->
 # Feature: File Browser
 
 ## Purpose
@@ -10,7 +10,8 @@ Every file route is **authenticated** — a request without a valid Supabase bea
 ## Used By
 - UI: `/files` page, file browser component
 - API (all authenticated, per-user scoped): `GET /files`, `GET /files/stats`, `GET /files/stats/activity`, `GET /files-by-key/metadata?key=...`, `GET /files-by-key/download?key=...`, `GET /files-by-key/preview?key=...`, `DELETE /files-by-key?key=...`
-- Legacy API: `GET /files/{key}`, `GET /files/{key}/download`, `GET /files/{key}/preview`, `DELETE /files/{key}`
+
+Key-addressed operations are served **only** by the query-param `/files-by-key/*` routes; there is no path-segment `/files/{key}` family.
 
 ## Core Functions
 - `apps/web/src/components/files/file-browser.tsx` — tree view container with loading, empty, error, refresh, preview, download, and delete flows
@@ -40,7 +41,6 @@ The listing is always scoped to the authenticated caller (the union of their upl
 - `GET /files-by-key/download?key=...` → `{ url: string }` (presigned URL, attachment disposition, 10-min expiry). Increments the `total_downloads` counter exposed on `/files/stats`. The counter is persisted via `repo/counter.py` to `services/api/data/download_count.json` (override via `DOWNLOAD_COUNT_FILE`). It survives a local process restart; see [RELIABILITY.md](../RELIABILITY.md#stateful-counters--durability-caveats) for its limits on ephemeral filesystems and across replicas.
 - `GET /files-by-key/preview?key=...` → `{ url: string }` (presigned URL for inline rendering, 10-min expiry). Does **not** increment the download counter — used by the preview modal for images / PDFs.
 - `DELETE /files-by-key?key=...` → `{ deleted: true, key: string }`
-- Legacy `/files/{key}` routes remain available for compatibility. The web client uses them only as a rolling-deploy fallback when `/files-by-key` is unavailable and the key is safe to place in a legacy path.
 - Side effects: DELETE removes file from B2; `/download` increments the in-memory download counter
 
 ## Flow
@@ -52,7 +52,6 @@ The listing is always scoped to the authenticated caller (the union of their upl
 - Download: fetches presigned URL via `/files-by-key/download?key=...` (attachment disposition, 10-min expiry), opens in new tab, bumps the download counter, triggers a stats refresh
 - Delete: calls `DELETE /files-by-key?key=...`, removes row from tree, shows toast
 - All key-based API calls send the key in the query string and validate it against path-traversal patterns in the API service layer
-- During frontend/API version skew, the web client falls back to legacy path routes only for keys that cannot collide with reserved file routes such as stats, download, or preview.
 
 ## Edge Cases
 - No / invalid bearer token → API returns 401 (before any key handling)
