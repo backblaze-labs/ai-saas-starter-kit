@@ -75,6 +75,23 @@ def reset_shared_module_state():
 
 
 @pytest.fixture(autouse=True)
+async def reset_shared_http_client():
+    """Close the shared Supabase httpx client before and after each test.
+
+    The pooled client (`repo/http_client.py`) binds its connection pool to the
+    event loop it first issues a request on; pytest-asyncio gives each async
+    test its own loop, so without this a client created in one test would be
+    reused on the next test's loop and raise. Suite-wide (not just the
+    http_client tests) so any future test that drives a real repo path is safe.
+    """
+    from app.repo import http_client
+
+    await http_client.close_client()
+    yield
+    await http_client.close_client()
+
+
+@pytest.fixture(autouse=True)
 def isolate_download_counter(tmp_path, monkeypatch):
     """Redirect the persisted download counter to a temp file per test and
     reset the in-memory counter to 0. Keeps tests hermetic and prevents

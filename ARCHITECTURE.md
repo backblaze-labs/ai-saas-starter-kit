@@ -126,6 +126,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 - B2 data access (repo layer): `services/api/app/repo/b2_client.py`
 - Pydantic models: `services/api/app/types/` (`files.py`, `upload.py`, `stats.py`, `formatting.py`)
 - Billing (layered): `services/api/app/runtime/billing.py` → `service/billing.py` → `repo/{stripe_client,supabase_billing}.py`
+- Shared Supabase HTTP pool: `services/api/app/repo/http_client.py` — one process-wide `httpx.AsyncClient` reused by all Supabase adapters, opened/closed in `main.lifespan`
 - Config (pydantic-settings): `services/api/app/config/settings.py`
 - Structural tests: `services/api/tests/test_structure.py`
 - Frontend API client: `apps/web/src/lib/api-client.ts`
