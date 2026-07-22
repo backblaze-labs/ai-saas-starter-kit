@@ -249,10 +249,23 @@ create trigger subscriptions_set_updated_at
 --
 -- p_event_created_at is the Stripe EVENT's `created` (unix seconds). NULL is
 -- treated as "cannot order — apply it" so a missing timestamp never drops an
--- update (idempotency is still handled separately by stripe_events).
+-- update (idempotency is still handled separately by stripe_events). Caveat: a
+-- NULL-timestamped event also WRITES NULL back to last_event_created_at,
+-- re-disarming the guard until the next non-NULL event lands — harmless for
+-- Stripe (event.created is always set) but relevant to any adapter that omits
+-- it. Ordering is second-granular, and the comparison is `>=`, so two distinct
+-- events in the SAME second are last-delivered-wins (an inherent limit, not a
+-- regression — same-second state flips are rare and retries are idempotent).
 --
--- Called by the webhook path via PostgREST RPC with the service role; the
--- explicit grant below makes it reachable (service_role bypasses RLS anyway).
+-- Called by the webhook path via PostgREST RPC with the service role. It is
+-- SECURITY INVOKER (runs with the caller's privileges), NOT definer: the write
+-- to public.subscriptions therefore succeeds only for a role that actually
+-- holds insert/update on that table (service_role). A DEFINER function here
+-- would be an entitlement-forgery hole — PostgREST exposes public-schema RPCs
+-- and Postgres grants EXECUTE to PUBLIC by default, so as definer any anon
+-- caller could forge a paid plan for an arbitrary p_user_id. As invoker, anon/
+-- authenticated (which lack the table grant) get permission denied; the
+-- explicit REVOKE below removes even EXECUTE from PUBLIC for defense in depth.
 create or replace function public.apply_subscription_event(
   p_user_id                uuid,
   p_plan_id                text,
@@ -265,8 +278,7 @@ create or replace function public.apply_subscription_event(
 )
 returns void
 language sql
-security definer
-set search_path = public
+security invoker
 as $$
   insert into public.subscriptions as s (
     user_id, plan_id, status, stripe_customer_id, stripe_subscription_id,
@@ -335,6 +347,12 @@ grant select, insert on public.stripe_events to service_role;
 grant execute on function public.apply_subscription_event(
   uuid, text, text, text, text, timestamptz, boolean, bigint
 ) to service_role;
+-- Remove the PUBLIC default EXECUTE grant so only service_role can call the
+-- RPC (defense in depth; SECURITY INVOKER already blocks the table write for
+-- anon/authenticated, but this keeps the RPC off the anon-reachable surface).
+revoke execute on function public.apply_subscription_event(
+  uuid, text, text, text, text, timestamptz, boolean, bigint
+) from public;
 
 -- =============================================================================
 -- GENERATION — jobs, generated files, provider runs, usage meter

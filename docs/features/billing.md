@@ -83,7 +83,17 @@ reusable plan-gating dependency that locks features behind a tier.
   ordering is impossible — first event on the row, or a missing timestamp). A
   staler event is a no-op DB-side, so the freshness check is atomic and cannot
   race under concurrent deliveries (no read-compare-write in the API). The
-  checkout id-only path keeps its plain merge-upsert.
+  checkout id-only path keeps its plain merge-upsert. `event.created` is
+  second-granular and the compare is `>=`, so two genuinely distinct events in
+  the *same second* are last-delivered-wins — an inherent limit, acceptable
+  because same-second state flips are rare and idempotent retries are caught by
+  `stripe_events`.
+- **Applying this schema change:** the `last_event_created_at` column and
+  `apply_subscription_event` function live in the consolidated init migration
+  (`00000000000000_init.sql`). A DB that already ran an earlier `init.sql` will
+  **not** pick them up from `supabase start` / `supabase db push` (that version
+  is recorded as applied) — run `supabase db reset` locally, or reset/recreate
+  the hosted DB, after pulling. A fresh clone gets them on first `supabase start`.
 
 ## UX States
 - Empty/Free: three plan cards, current plan = `FREE`, Pro preview locked.
