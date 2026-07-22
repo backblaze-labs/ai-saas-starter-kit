@@ -32,10 +32,8 @@ import type { FileMetadata } from "@ai-saas-starter-kit/shared";
 const FILE_LIST_LIMIT = 1000;
 
 export function FileBrowser() {
-  const { data: files = [], isLoading, isFetching, error, refetch } = useFiles(
-    "",
-    FILE_LIST_LIMIT,
-  );
+  const { data: files = [], isLoading, isFetching, error, refetch } =
+    useFiles(FILE_LIST_LIMIT);
   const deleteMutation = useDeleteFile();
   const truncated = files.length >= FILE_LIST_LIMIT;
 

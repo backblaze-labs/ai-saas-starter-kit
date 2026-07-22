@@ -8,7 +8,7 @@
     "dev:web": "pnpm --filter @ai-saas-starter-kit/web dev",
     "dev:api": "cd services/api && .venv/bin/uvicorn main:app --reload --port ${API_PORT:-8000}",
     "stripe:seed": "node scripts/sync-stripe-env.mjs",
-    "stripe:listen": "stripe listen --forward-to localhost:8000/billing/webhook",
+    "stripe:listen": "stripe listen --forward-to localhost:${API_PORT:-8000}/billing/webhook",
     "build": "pnpm --filter @ai-saas-starter-kit/web build",
     "typecheck": "pnpm --filter @ai-saas-starter-kit/web typecheck",
     "lint": "pnpm --filter @ai-saas-starter-kit/web lint",

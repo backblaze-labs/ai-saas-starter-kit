@@ -128,7 +128,7 @@ Either way you get a clean project with no upstream history — ready to push to
 >
 > ```bash
 > pnpm install
-> cd services/api && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
+> cd services/api && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
 > cp .env.example .env          # then paste your B2 bucket + app key into .env (step 3)
 > supabase start && node scripts/sync-supabase-env.mjs
 > pnpm dev                      # http://localhost:3000 — sign up, then grant admin (see below)
@@ -146,7 +146,7 @@ pnpm install
 
 ```bash
 cd services/api
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cd ../..
 ```

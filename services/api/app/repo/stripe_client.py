@@ -62,36 +62,41 @@ def create_checkout_session(
     events and stamped into the subscription metadata, so the webhook can map a
     Stripe subscription to a user with no extra lookup.
     """
-    session = stripe.checkout.Session.create(
-        api_key=_api_key(),
-        mode="subscription",
-        line_items=[{"price": price_id, "quantity": 1}],
-        success_url=success_url,
-        cancel_url=cancel_url,
-        client_reference_id=client_reference_id,
-        # Reuse an existing customer if we have one; otherwise Stripe creates one
-        # and prefills the email.
-        customer=customer_id or None,
-        customer_email=None if customer_id else customer_email,
-        subscription_data={"metadata": {"user_id": client_reference_id}},
-        metadata={"user_id": client_reference_id},
-    )
+    try:
+        session = stripe.checkout.Session.create(
+            api_key=_api_key(),
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=success_url,
+            cancel_url=cancel_url,
+            client_reference_id=client_reference_id,
+            # Reuse an existing customer if we have one; otherwise Stripe creates
+            # one and prefills the email.
+            customer=customer_id or None,
+            customer_email=None if customer_id else customer_email,
+            subscription_data={"metadata": {"user_id": client_reference_id}},
+            metadata={"user_id": client_reference_id},
+        )
+    except stripe.error.AuthenticationError as e:
+        # A present-but-invalid key (typo, wrong mode, rotated) is a config
+        # problem, not a server bug — surface it as a clean 503, same as a
+        # missing key, instead of leaking a 500. See runtime/billing.py.
+        raise StripeConfigError(f"Stripe authentication failed: {e}") from None
     return session.url
 
 
 def create_portal_session(*, customer_id: str, return_url: str) -> str:
     """Create a Billing Portal session and return its hosted URL."""
-    session = stripe.billing_portal.Session.create(
-        api_key=_api_key(),
-        customer=customer_id,
-        return_url=return_url,
-    )
+    try:
+        session = stripe.billing_portal.Session.create(
+            api_key=_api_key(),
+            customer=customer_id,
+            return_url=return_url,
+        )
+    except stripe.error.AuthenticationError as e:
+        # A present-but-invalid key is a config problem — 503, not a 500.
+        raise StripeConfigError(f"Stripe authentication failed: {e}") from None
     return session.url
-
-
-def retrieve_subscription(subscription_id: str) -> dict:
-    """Fetch a subscription object (dict-like) from Stripe."""
-    return stripe.Subscription.retrieve(subscription_id, api_key=_api_key())
 
 
 def construct_event(payload: bytes, sig_header: str) -> dict:

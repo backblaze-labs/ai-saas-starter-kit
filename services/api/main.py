@@ -17,7 +17,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
-from app.config import settings  # noqa: E402
+from app.config import APP_VERSION, settings  # noqa: E402
 from app.runtime import (  # noqa: E402
     admin,
     auth,
@@ -158,7 +158,7 @@ logger = logging.getLogger("api")
 app = FastAPI(
     title="AI SaaS Starter Kit API",
     description="File upload and management API backed by Backblaze B2",
-    version="0.1.0",
+    version=APP_VERSION,
     lifespan=lifespan,
     # Interactive docs are toggleable so production can hide the API surface.
     docs_url="/docs" if settings.enable_docs else None,

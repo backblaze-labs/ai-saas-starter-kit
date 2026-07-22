@@ -304,6 +304,38 @@ async def test_checkout_requires_stripe_config(monkeypatch):
         )
 
 
+def test_checkout_session_maps_auth_error_to_config_error(monkeypatch):
+    # A present-but-invalid key surfaces as StripeConfigError (503), not a raw
+    # AuthenticationError that would bubble up as a 500.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_bogus")
+
+    def _raise(**_kw):
+        raise stripe_client.stripe.error.AuthenticationError("Invalid API Key")
+
+    monkeypatch.setattr(stripe_client.stripe.checkout.Session, "create", _raise)
+    with pytest.raises(StripeConfigError):
+        stripe_client.create_checkout_session(
+            price_id="price_x",
+            customer_email="u@example.com",
+            client_reference_id="u",
+            success_url="https://x/s",
+            cancel_url="https://x/c",
+        )
+
+
+def test_portal_session_maps_auth_error_to_config_error(monkeypatch):
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_bogus")
+
+    def _raise(**_kw):
+        raise stripe_client.stripe.error.AuthenticationError("Invalid API Key")
+
+    monkeypatch.setattr(stripe_client.stripe.billing_portal.Session, "create", _raise)
+    with pytest.raises(StripeConfigError):
+        stripe_client.create_portal_session(
+            customer_id="cus_x", return_url="https://x/r"
+        )
+
+
 @pytest.mark.asyncio
 async def test_checkout_rejects_unknown_plan(monkeypatch, fake_store):
     monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")

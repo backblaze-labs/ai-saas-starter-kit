@@ -46,14 +46,35 @@ const PLACEHOLDERS = new Set([
 // pair the frontend needs. The backend falls back to them (see settings.py), so
 // the legacy SUPABASE_URL/SUPABASE_ANON_KEY are an optional split-deploy override,
 // not required here. Mirrors services/api/main.py REQUIRED_SUPABASE_SETTINGS.
-// SUPABASE_SERVICE_ROLE_KEY is optional until the admin slice, so it is not required.
+// SUPABASE_SERVICE_ROLE_KEY IS required at API boot: the billing slice reads/writes
+// plans + subscriptions with it on every request (webhook sync bypasses RLS).
 const REQUIRED_SUPABASE_VARS = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
 ];
 const SUPABASE_PLACEHOLDERS = new Set([
   "your_supabase_anon_key",
   "your_supabase_service_role_key",
+]);
+
+// Stripe + NVIDIA are OPTIONAL to boot: their endpoints return a clean 503 until
+// configured (.env.example ships their secrets empty). A leftover placeholder is
+// therefore a warning, not a hard failure — it flags a half-finished billing /
+// generation setup without blocking `pnpm dev`. Keep in sync with .env.example.
+const OPTIONAL_PLACEHOLDER_VARS = [
+  "STRIPE_SECRET_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "STRIPE_PRICE_PRO",
+  "STRIPE_PRICE_TEAM",
+  "NVIDIA_API_KEY",
+];
+const OPTIONAL_PLACEHOLDERS = new Set([
+  "sk_test_your_secret_key",
+  "whsec_your_webhook_signing_secret",
+  "price_your_pro_price_id",
+  "price_your_team_price_id",
+  "nvapi-your-nvidia-nim-key",
 ]);
 
 // Only Next.js: `pnpm dev` self-heals the API side via scripts/pick-port.mjs,
@@ -219,6 +240,35 @@ function checkEnv() {
       `.env still has placeholder Supabase values: ${supabasePlaceholders.join(", ")}`,
       "Fill them via `node scripts/sync-supabase-env.mjs` (local) or your hosted project's API settings",
     );
+  }
+
+  const optionalPlaceholders = OPTIONAL_PLACEHOLDER_VARS.filter(
+    (k) => env[k] && OPTIONAL_PLACEHOLDERS.has(env[k]),
+  );
+  if (optionalPlaceholders.length > 0) {
+    warn(
+      `.env has placeholder values for optional integrations: ${optionalPlaceholders.join(", ")}`,
+      "Fill them to enable Stripe billing / AI generation, or leave the secrets empty — those endpoints return a clean 503 until configured.",
+    );
+  }
+
+  // Cross-check: Stripe half-configured. A secret key present but a missing
+  // webhook secret or price id is the dangerous silent state — Checkout
+  // succeeds while the subscription→DB webhook 503s, so a user pays but stays
+  // on Free. Fully-empty (unconfigured) Stripe is fine; this warns only the
+  // in-between case, which neither the required nor the placeholder check catch.
+  const stripeKeySet =
+    env.STRIPE_SECRET_KEY && !OPTIONAL_PLACEHOLDERS.has(env.STRIPE_SECRET_KEY);
+  if (stripeKeySet) {
+    const missing = ["STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_PRO", "STRIPE_PRICE_TEAM"].filter(
+      (k) => !env[k] || OPTIONAL_PLACEHOLDERS.has(env[k]),
+    );
+    if (missing.length > 0) {
+      warn(
+        `Stripe is half-configured — ${missing.join(", ")} unset. Checkout will work, but subscriptions won't sync to the database (a user could pay and stay on Free).`,
+        "Run `pnpm stripe:seed` to create the prices and `pnpm stripe:listen` for the webhook secret. See docs/stripe-setup.md.",
+      );
+    }
   }
 }
 

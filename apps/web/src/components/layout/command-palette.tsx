@@ -50,7 +50,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   // Lazy-load the file index only while the palette is open, through the shared
   // TanStack Query cache (deduped with the Files page, cached, and errors handled
   // globally) rather than a bespoke useEffect + fetch that swallowed failures.
-  const files = useFiles("", 100, open).data ?? [];
+  const files = useFiles(100, open).data ?? [];
 
   const runThen = (fn: () => void) => () => {
     onOpenChange(false);
