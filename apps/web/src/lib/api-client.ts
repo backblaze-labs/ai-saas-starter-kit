@@ -156,10 +156,8 @@ export async function getHealth() {
   return apiFetch<{ status: string; b2_connected: boolean }>("/health");
 }
 
-export async function getFiles(prefix = "", limit = 100) {
-  return apiFetch<FileMetadata[]>(
-    `/files?prefix=${encodeURIComponent(prefix)}&limit=${limit}`
-  );
+export async function getFiles(limit = 100) {
+  return apiFetch<FileMetadata[]>(`/files?limit=${limit}`);
 }
 
 export async function getFileStats() {

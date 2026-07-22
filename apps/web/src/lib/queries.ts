@@ -52,8 +52,7 @@ import type {
 // "find usages" of `qk.files` reveals every consumer.
 export const qk = {
   all: ["b2"] as const,
-  files: (prefix?: string, limit?: number) =>
-    [...qk.all, "files", prefix ?? "", limit ?? 100] as const,
+  files: (limit?: number) => [...qk.all, "files", limit ?? 100] as const,
   stats: () => [...qk.all, "stats"] as const,
   uploadActivity: (days: number) =>
     [...qk.all, "stats", "activity", days] as const,
@@ -88,10 +87,10 @@ export function invalidateFileData(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: qk.stats() });
 }
 
-export function useFiles(prefix = "", limit = 100, enabled = true) {
+export function useFiles(limit = 100, enabled = true) {
   return useQuery<FileMetadata[], ApiError>({
-    queryKey: qk.files(prefix, limit),
-    queryFn: () => getFiles(prefix, limit),
+    queryKey: qk.files(limit),
+    queryFn: () => getFiles(limit),
     enabled,
   });
 }
