@@ -25,9 +25,13 @@ Security principles and implementation for the ai-saas-starter-kit.
   memory). This drops one of the two per-request Supabase round-trips on a warm hit. The
   role/authorization decision (`/rest/v1/profiles`) is **never cached** — it is fetched
   live on every request, so a demoted admin loses access immediately (no
-  privilege-escalation window). Tradeoff: a revoked or rotated token stays accepted for
-  up to the TTL because identity is cached. Set `AUTH_CACHE_TTL_SECONDS=0` to disable the
-  cache and revalidate identity on every request.
+  privilege-escalation window). Tradeoff: what the cache skips is the identity/liveness
+  check, so a token is honored for up to the TTL past its **expiry or revocation** (not
+  just rotation) — bounded and low-risk here because Supabase access tokens are already
+  bearer-valid until their own ~1h `exp` regardless of logout, and **privilege escalation
+  is impossible** (a stale admin token's live role fetch fails and downgrades to `user`).
+  Set `AUTH_CACHE_TTL_SECONDS=0` to disable the cache and revalidate identity on every
+  request.
 - **Row Level Security** is enabled on `profiles` and `roles`: a user reads/updates only
   their own profile; admins (`is_admin()`) may read/update all. A trigger
   (`prevent_role_escalation`) blocks non-admins from changing their own role.

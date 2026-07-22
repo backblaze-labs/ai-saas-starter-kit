@@ -161,3 +161,31 @@ async def test_ttl_zero_disables_cache(auth_service, monkeypatch):
     assert counts["user"] == 2  # no caching — identity fetched every time
     assert counts["role"] == 2
     assert auth_service._identity_cache == {}  # nothing stored
+
+
+def test_cache_is_bounded_and_purges_expired_first(auth_service, monkeypatch):
+    """The store caps the cache: expired entries are purged first, and if still
+    at capacity the soonest-to-expire live entry is evicted — so token churn
+    can't grow the dict unboundedly."""
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(auth_service.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(auth_service, "_IDENTITY_CACHE_MAX", 3)
+
+    # Fill to capacity with live entries (ttl 100 → expire at 1100).
+    for i in range(3):
+        auth_service._store_identity(f"k{i}", (f"u-{i}", None), ttl=100)
+    assert len(auth_service._identity_cache) == 3
+
+    # A new key at capacity with everything live evicts the soonest-to-expire
+    # (k0, stored first) — never exceeding the cap.
+    auth_service._store_identity("k-new", ("u-new", None), ttl=100)
+    assert len(auth_service._identity_cache) == 3
+    assert "k0" not in auth_service._identity_cache
+    assert "k-new" in auth_service._identity_cache
+
+    # Advance past the live entries' expiry; a further store purges the expired
+    # ones instead of evicting a live entry, and stays bounded.
+    clock["t"] = 1200.0
+    auth_service._store_identity("k-fresh", ("u-fresh", None), ttl=100)
+    assert len(auth_service._identity_cache) == 1
+    assert "k-fresh" in auth_service._identity_cache
