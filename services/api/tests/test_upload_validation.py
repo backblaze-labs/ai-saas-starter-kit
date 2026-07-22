@@ -1,5 +1,7 @@
 """Unit + integration tests for upload validation and content sniffing."""
 
+import asyncio
+
 import pytest
 
 from app.service import upload as upload_service
@@ -180,6 +182,48 @@ async def test_disallowed_type_rejected_before_buffering(auth_client, monkeypatc
     )
     assert resp.status_code == 415
     assert processed is False
+
+
+# --- concurrency gate --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_upload_waits_when_concurrency_slots_exhausted(auth_client, monkeypatch):
+    """The semaphore actually bounds concurrency: with every slot held, a new
+    upload blocks at the gate (doesn't process) until a slot frees."""
+    from app.runtime import upload as upload_route
+
+    # Single-slot gate, fully occupied so the next upload must wait.
+    gate = asyncio.Semaphore(1)
+    monkeypatch.setattr(upload_route, "_upload_semaphore", gate)
+    await gate.acquire()
+
+    def fake_upload_file(file_data, key, content_type):
+        return FileUploadResponse(
+            key=key,
+            filename="a.txt",
+            size_bytes=len(file_data),
+            size_human="5 B",
+            content_type=content_type,
+            uploaded_at="2026-02-14T00:00:00Z",
+            url=None,
+            metadata=None,
+        )
+
+    monkeypatch.setattr(upload_service, "upload_file", fake_upload_file)
+    monkeypatch.setattr(upload_service, "extract_metadata", lambda *a, **k: None)
+
+    task = asyncio.create_task(
+        auth_client.post("/upload", files={"file": ("a.txt", b"hello", "text/plain")})
+    )
+    # While the only slot is held, the request must not complete.
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.shield(task), timeout=0.2)
+
+    # Freeing the slot lets the waiting upload proceed to completion.
+    gate.release()
+    resp = await asyncio.wait_for(task, timeout=2.0)
+    assert resp.status_code == 200
 
 
 # --- uploads_total metric increments ----------------------------------------

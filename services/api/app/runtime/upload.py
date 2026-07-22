@@ -17,7 +17,9 @@ router = APIRouter()
 
 # Bounds simultaneous in-flight uploads so N concurrent large bodies (each
 # buffered in memory) can't OOM a small instance. Constructed at import; it
-# lazily binds to the running loop on first acquire (Python 3.10+).
+# binds once — to the loop of its first acquire (Python 3.10+) — which is the
+# single app loop in production. `max(1, ...)` floors a 0/negative config to a
+# usable semaphore.
 _upload_semaphore = asyncio.Semaphore(max(1, settings.max_concurrent_uploads))
 
 
