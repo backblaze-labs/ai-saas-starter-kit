@@ -42,6 +42,24 @@ class GenerationQuotaError(RuntimeError):
     """Raised when a user exceeds the per-day generation cap. Mapped to 429."""
 
 
+# Generic, user-safe failure message. Raw provider/SDK error text can embed API
+# keys or signed URLs, so it is logged server-side (logger.exception) but never
+# returned to the client or written to the stored job.error (which the user can
+# read back via GET /generation/jobs).
+_GENERIC_FAILURE = "Image generation failed. Please try again."
+
+
+async def _safe_mark_failed(job_id: str, error: str) -> None:
+    """Best-effort transition a job to failed so it never lingers as 'running'.
+
+    Swallows its own errors: if the persistence layer is unreachable there is
+    nothing more to do here, and the caller is already surfacing a failure."""
+    try:
+        await supabase_generation.complete_job(job_id, status="failed", error=error)
+    except Exception:
+        logger.exception("could not mark job=%s failed", job_id)
+
+
 def is_configured() -> bool:
     """True when both the provider key and the persistence layer are set."""
     return generation_pipeline.is_configured() and supabase_generation.is_configured()
@@ -95,68 +113,93 @@ async def generate(*, user_id: str, prompt: str, seed: int | None = None) -> Gen
             timeout=settings.generation_deadline,
         )
     except TimeoutError:
+        # The deadline value is our own config, not provider text — safe to show.
         msg = f"Generation timed out after {settings.generation_deadline}s"
-        await supabase_generation.complete_job(job_id, status="failed", error=msg)
+        await _safe_mark_failed(job_id, msg)
         logger.warning("generation timed out for job=%s", job_id)
         raise GenerationError(msg) from None
-    except Exception as exc:  # provider/preflight/network failure
-        await supabase_generation.complete_job(job_id, status="failed", error=str(exc))
+    except Exception:  # provider/preflight/network failure
+        # Log the full detail server-side; never surface raw provider/SDK text.
         logger.exception("generation pipeline raised for job=%s", job_id)
-        raise GenerationError(str(exc)) from exc
+        await _safe_mark_failed(job_id, _GENERIC_FAILURE)
+        raise GenerationError(_GENERIC_FAILURE) from None
 
     assets = result["assets"]
     status = "succeeded" if assets and not result["failed"] else "failed"
+    if status == "failed":
+        # result["error"] is the SDK's own error_summary() — log it, don't store it.
+        logger.warning("generation job=%s produced no asset: %s", job_id, result.get("error"))
+    stored_error = None if status == "succeeded" else _GENERIC_FAILURE
 
-    await supabase_generation.complete_job(
-        job_id,
-        status=status,
-        run_id=result["run_id"],
-        manifest_uri=result["manifest_uri"],
-        canonical_hash=result["canonical_hash"],
-        cost_usd=result["cost_usd"],
-        error=result["error"],
-    )
-    await supabase_generation.record_provider_run(
-        {
-            "job_id": job_id,
-            "provider": "nvidia",
-            "model": result["model"],
-            "run_id": result["run_id"],
-            "status": status,
-            "cost_usd": result["cost_usd"],
-            "assets_count": len(assets),
-        }
-    )
+    # The run is already paid for and (on success) written to B2. The
+    # running->terminal transition is the ONLY write that can strand a job as
+    # 'running', so guard it on its own and fail loudly if it can't land.
+    try:
+        await supabase_generation.complete_job(
+            job_id,
+            status=status,
+            run_id=result["run_id"],
+            manifest_uri=result["manifest_uri"],
+            canonical_hash=result["canonical_hash"],
+            cost_usd=result["cost_usd"],
+            error=stored_error,
+        )
+    except Exception:
+        logger.exception("failed to finalize job=%s; marking failed", job_id)
+        await _safe_mark_failed(job_id, _GENERIC_FAILURE)
+        raise GenerationError(_GENERIC_FAILURE) from None
 
-    file_rows = [
-        {
-            "user_id": user_id,
-            "job_id": job_id,
-            "b2_key": a["key"],
-            "url": a["url"],
-            "sha256": a["sha256"],
-            "media_type": a["media_type"],
-            "size_bytes": a["size_bytes"],
-            "width": a["width"],
-            "height": a["height"],
-        }
-        for a in assets
-        if a.get("key")
-    ]
-    await supabase_generation.insert_files(file_rows)
-
-    if status == "succeeded":
-        await supabase_generation.record_usage_event(
+    # Secondary bookkeeping (provider-run, file rows, usage event). A blip here
+    # must NOT flip an already-succeeded job to failed: the asset exists in B2, so
+    # a re-generate would double provider spend. Log and continue — a missing
+    # provider-run/usage row is a lesser, non-user-facing inconsistency.
+    try:
+        await supabase_generation.record_provider_run(
+            {
+                "job_id": job_id,
+                "provider": "nvidia",
+                "model": result["model"],
+                "run_id": result["run_id"],
+                "status": status,
+                "cost_usd": result["cost_usd"],
+                "assets_count": len(assets),
+            }
+        )
+        file_rows = [
             {
                 "user_id": user_id,
                 "job_id": job_id,
-                "kind": "image_generation",
-                "units": len(assets),
-                "cost_usd": result["cost_usd"],
+                "b2_key": a["key"],
+                "url": a["url"],
+                "sha256": a["sha256"],
+                "media_type": a["media_type"],
+                "size_bytes": a["size_bytes"],
+                "width": a["width"],
+                "height": a["height"],
             }
+            for a in assets
+            if a.get("key")
+        ]
+        await supabase_generation.insert_files(file_rows)
+        if status == "succeeded":
+            await supabase_generation.record_usage_event(
+                {
+                    "user_id": user_id,
+                    "job_id": job_id,
+                    "kind": "image_generation",
+                    "units": len(assets),
+                    "cost_usd": result["cost_usd"],
+                }
+            )
+    except Exception:
+        logger.exception(
+            "secondary persistence failed for job=%s (job left status=%s)", job_id, status
         )
-    else:
-        raise GenerationError(result["error"] or "Generation produced no image")
+
+    # A no-asset run is a failure from the user's perspective; raise AFTER the
+    # terminal status is durably recorded so the job never lingers as 'running'.
+    if status == "failed":
+        raise GenerationError(_GENERIC_FAILURE)
 
     return GenerationJob(
         id=job_id,
