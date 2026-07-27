@@ -41,9 +41,9 @@ async def auth_client():
 def clear_list_cache():
     """Clear the repo's bucket-listing cache before each test so cached
     listings never leak across tests (keeps the pagination tests hermetic)."""
-    from app.repo import b2_client
+    from app.repo import b2_listing
 
-    b2_client._invalidate_list_cache()
+    b2_listing.invalidate_list_cache()
     yield
 
 

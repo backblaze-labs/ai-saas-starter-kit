@@ -6,8 +6,8 @@ from app.repo.b2_client import (
     get_presigned_upload_url,
     get_presigned_url,
     list_files,
-    upload_file,
 )
+from app.repo.b2_listing import invalidate_list_cache
 from app.repo.counter import get_download_count, increment_download_count
 
 __all__ = [
@@ -19,6 +19,6 @@ __all__ = [
     "get_presigned_upload_url",
     "get_presigned_url",
     "increment_download_count",
+    "invalidate_list_cache",
     "list_files",
-    "upload_file",
 ]

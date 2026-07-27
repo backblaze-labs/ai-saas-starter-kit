@@ -249,6 +249,56 @@ def test_finalize_deletes_and_rejects_oversized_stored_file(monkeypatch):
     assert deleted == [key]
 
 
+def test_finalize_deletes_and_rejects_empty_stored_file(monkeypatch):
+    # Defense-in-depth branch: a zero-byte object that landed anyway is deleted.
+    key = f"uploads/{TEST_USER_ID}/empty.txt"
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        upload_service, "get_file_metadata", lambda k: _stored(k, size_bytes=0)
+    )
+    monkeypatch.setattr(upload_service, "delete_file", lambda k: deleted.append(k))
+
+    with pytest.raises(UploadError) as exc:
+        finalize_upload(key, user_id=TEST_USER_ID)
+    assert "Empty file" in exc.value.detail
+    assert deleted == [key]
+
+
+def test_finalize_deletes_and_rejects_disallowed_stored_type(monkeypatch):
+    # The stored object's Content-Type isn't in the allow-list — reject + delete
+    # before the signature check (the type gate precedes the Range GET).
+    key = f"uploads/{TEST_USER_ID}/x.txt"
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        upload_service,
+        "get_file_metadata",
+        lambda k: _stored(k, content_type="application/x-msdownload"),
+    )
+    monkeypatch.setattr(upload_service, "delete_file", lambda k: deleted.append(k))
+
+    with pytest.raises(UploadError) as exc:
+        finalize_upload(key, user_id=TEST_USER_ID)
+    assert exc.value.status_code == 415
+    assert deleted == [key]
+
+
+def test_finalize_invalidates_list_cache_on_success(monkeypatch):
+    # The browser wrote the object straight to B2, so finalize must invalidate the
+    # listing cache — otherwise a file uploaded within the ~30s TTL of a cached
+    # /files load wouldn't appear until the cache expired (regression the old
+    # through-API put_object path didn't have).
+    key = f"uploads/{TEST_USER_ID}/report.txt"
+    invalidated: list[bool] = []
+    monkeypatch.setattr(upload_service, "get_file_metadata", lambda k: _stored(k))
+    monkeypatch.setattr(upload_service, "get_object_head_bytes", lambda k, **kw: b"hello")
+    monkeypatch.setattr(
+        upload_service, "invalidate_list_cache", lambda: invalidated.append(True)
+    )
+
+    finalize_upload(key, user_id=TEST_USER_ID)
+    assert invalidated == [True]
+
+
 # --- endpoints --------------------------------------------------------------
 
 

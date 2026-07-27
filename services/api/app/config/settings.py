@@ -109,21 +109,14 @@ class Settings(BaseSettings):
     api_cors_origin_regex: str = ""
 
     # Upload limits
-    max_file_size: int = 100 * 1024 * 1024  # 100MB
-    # Max concurrent in-flight uploads across the process. Each upload buffers
-    # its whole body in memory (see docs/RELIABILITY.md), so worst-case upload
-    # memory is bounded by this * max_file_size, PER WORKER PROCESS — the gate
-    # that keeps N large concurrent uploads from OOM-ing a small instance.
-    # Enforced by an asyncio.Semaphore in runtime/upload.py; excess requests
-    # wait for a slot. This is a GLOBAL cap (all users on a worker share it):
-    # lower it on a memory-constrained instance, raise it if legitimate parallel
-    # uploads start queuing. Assumes an upstream/proxy request-read timeout so a
-    # slow client can't pin a slot indefinitely (uvicorn sets none by default).
-    max_concurrent_uploads: int = 8
+    max_file_size: int = 100 * 1024 * 1024  # 100MB (enforced at /upload/complete)
     # Hard ceiling on any request body, enforced at the ASGI layer (see
-    # runtime/bodylimit.py) BEFORE FastAPI buffers a multipart upload to disk.
-    # Sized a little above max_file_size to leave room for multipart framing.
-    max_request_body_size: int = 105 * 1024 * 1024  # ~105MB
+    # runtime/bodylimit.py). File bytes no longer transit the API — the browser
+    # PUTs them straight to B2 via a presigned URL — so every endpoint now takes
+    # only small JSON control payloads (presign/complete, generation, the Stripe
+    # webhook). A tight cap keeps the memory-DoS surface small; raise it only if a
+    # route legitimately needs a larger body.
+    max_request_body_size: int = 1 * 1024 * 1024  # 1MB
 
     # Optional confinement for key-addressed reads/deletes. Empty by default so
     # the by-key routes accept any key shape (they deliberately support nested

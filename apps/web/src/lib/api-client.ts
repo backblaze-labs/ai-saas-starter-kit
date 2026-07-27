@@ -207,6 +207,12 @@ function putToStorage(
       }
     });
 
+    // A cross-origin PUT blocked by a missing bucket-CORS rule fires `error`
+    // (not `load`) with no readable status, so it collapses to networkError()'s
+    // generic "couldn't reach the server". That is the single most likely
+    // first-deploy failure for direct upload — if uploads fail right after
+    // deploying, check the bucket CORS config (scripts/configure_b2_cors.py,
+    // docs/deployment.md) before suspecting the API.
     xhr.addEventListener("error", () => reject(networkError()));
     xhr.addEventListener("abort", () =>
       reject(new ApiError("Upload aborted", 0)),

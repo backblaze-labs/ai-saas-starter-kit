@@ -29,10 +29,12 @@ _list_scan_lock = Lock()  # single-flight: one cold-cache scan at a time
 _list_generation = 0  # bumped on invalidation to void in-flight scans
 
 
-def _invalidate_list_cache() -> None:
+def invalidate_list_cache() -> None:
     """Drop cached listings and void any scan already in flight (call after any
-    upload/delete). Bumping the generation stops a scan that started *before*
-    the mutation from writing its stale snapshot back after this clears it.
+    upload/delete/finalize). Bumping the generation stops a scan that started
+    *before* the mutation from writing its stale snapshot back after this clears
+    it. Public because the finalize path (service/upload) must invalidate too —
+    the browser writes the object straight to B2, so the repo has no other hook.
     """
     global _list_generation
     with _list_cache_lock:

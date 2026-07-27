@@ -75,6 +75,18 @@ never transit the API), so validation is split across the two control requests:
   and skip this check.
 - Empty file rejection (declared size 0, or 0 bytes stored).
 
+> **Caveat — the finalize checks are only enforced for objects the client finalizes.**
+> The `Content-Type` binding at presign holds unconditionally, but the true-size
+> (`413`) and magic-byte (`415`) checks run at `/upload/complete`. An object PUT to
+> the presigned URL but never finalized lands under the caller's `uploads/` prefix
+> and is listed/downloadable without those checks — so the size cap is
+> **advisory** on the write path and a same-user oversized/mismatched object can
+> persist. Cross-tenant isolation is unaffected (the key is server-built from the
+> caller's id, and SVG/HTML are excluded so a mismatched payload still can't be a
+> stored-XSS vector). Fully closing it (a staging prefix promoted on finalize, or
+> a bucket-lifecycle sweep of stale unconfirmed objects) is tracked in the
+> tech-debt tracker.
+
 ## Rate Limiting
 
 - Per-IP fixed-window limiter (`app/runtime/ratelimit.py`), configurable via `RATE_LIMIT_PER_MINUTE` (reads) and `RATE_LIMIT_WRITE_PER_MINUTE` (uploads/deletes/downloads). Guards against DoS and Backblaze transaction/egress cost amplification.

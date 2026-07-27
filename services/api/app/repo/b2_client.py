@@ -1,8 +1,6 @@
 import functools
-import io
 import mimetypes
 import time
-from datetime import UTC, datetime
 from threading import Lock
 from urllib.parse import quote
 
@@ -11,7 +9,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from app.config import APP_VERSION, settings
-from app.repo.b2_listing import _invalidate_list_cache, list_all_objects
+from app.repo.b2_listing import invalidate_list_cache, list_all_objects
 from app.types import FileMetadata
 from app.types.formatting import humanize_bytes
 
@@ -82,35 +80,6 @@ def check_connectivity() -> bool:
     return ok
 
 
-def upload_file(
-    file_data: bytes, key: str, content_type: str
-) -> FileMetadata:
-    """Upload file to B2. Raises RuntimeError on S3 failure."""
-    client = get_s3_client()
-    try:
-        client.put_object(
-            Bucket=settings.b2_bucket_name,
-            Key=key,
-            Body=io.BytesIO(file_data),
-            ContentType=content_type,
-        )
-    except ClientError as e:
-        raise RuntimeError(f"B2 upload failed for '{key}': {e}") from e
-    _invalidate_list_cache()  # new object must show up in listings/stats now
-    folder, filename = _split_key(key)
-    size = len(file_data)
-    return FileMetadata(
-        key=key,
-        filename=filename,
-        folder=folder,
-        size_bytes=size,
-        size_human=humanize_bytes(size),
-        content_type=content_type,
-        uploaded_at=datetime.now(UTC),
-        url=_public_url(key),
-    )
-
-
 def list_files(prefix: str = "") -> list[FileMetadata]:
     """List all files under `prefix`.
 
@@ -169,7 +138,7 @@ def delete_file(key: str) -> None:
         client.delete_object(Bucket=settings.b2_bucket_name, Key=key)
     except ClientError as e:
         raise RuntimeError(f"B2 delete failed for '{key}': {e}") from e
-    _invalidate_list_cache()  # deleted object must disappear from listings/stats
+    invalidate_list_cache()  # deleted object must disappear from listings/stats
 
 
 def get_presigned_url(

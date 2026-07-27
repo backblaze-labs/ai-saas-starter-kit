@@ -6,6 +6,7 @@ from app.repo import (
     get_file_metadata,
     get_object_head_bytes,
     get_presigned_upload_url,
+    invalidate_list_cache,
 )
 from app.service.keys import has_path_traversal
 from app.types import FileUploadResponse, PresignedUpload
@@ -194,15 +195,24 @@ def _require_owned_upload(user_id: str, key: str) -> None:
     if not key or has_path_traversal(key):
         raise UploadError("Invalid file key")
     if not key.startswith(upload_key_for(user_id, "")):
+        # 403 here, unlike the 404 that file reads/deletes use for a cross-tenant
+        # key (service/files._require_owned): those 404 to avoid confirming another
+        # user's object exists, but this check runs BEFORE any B2 call and fires
+        # regardless of existence, so it leaks nothing — a 403 reads truer for a
+        # client trying to finalize a key it doesn't own.
         raise UploadError("Invalid file key", status_code=403)
 
 
 def finalize_upload(key: str, *, user_id: str) -> FileUploadResponse:
     """Confirm a direct upload landed and passes the checks the sign step couldn't.
 
-    Called after the browser's PUT to B2 succeeds. Re-establishes the guarantees
-    the in-transit path used to provide, now that the bytes only ever lived in
-    B2:
+    Called after the browser's PUT to B2 succeeds. Re-establishes — *for objects
+    the client finalizes* — the guarantees the in-transit path used to provide,
+    now that the bytes only ever lived in B2. NOTE: these checks are only enforced
+    on the finalized path. An object PUT to the presigned URL but never finalized
+    lands under ``uploads/{user_id}/`` and is listed/served without the true-size
+    or signature check; closing that (a staging prefix or a lifecycle sweep of
+    stale unconfirmed objects) is tracked tech-debt, not done here. The checks:
 
     * **Ownership** — the key must be under the caller's own ``uploads/`` prefix,
       so a client can't finalize (and thereby surface) an object it doesn't own.
@@ -245,6 +255,12 @@ def finalize_upload(key: str, *, user_id: str) -> FileUploadResponse:
         raise UploadError(
             "File contents do not match the declared type", status_code=415
         )
+
+    # The object was written straight to B2 by the browser, so the listing cache
+    # (which the file browser + stats read) never saw the mutation. Invalidate it
+    # here — as the old through-API put_object path did — so the new file shows up
+    # immediately instead of after the ~30s cache TTL.
+    invalidate_list_cache()
 
     return FileUploadResponse(
         key=metadata.key,

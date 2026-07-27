@@ -94,7 +94,7 @@ def test_mutation_invalidates_cache(monkeypatch):
     client = _install_fake_client(monkeypatch)
 
     b2_client.list_files()  # scan + cache (2 pages)
-    b2_client._invalidate_list_cache()
+    b2_client.invalidate_list_cache()
     b2_client.list_files()  # cache voided → rescan (2 more)
 
     assert client.calls == 4
