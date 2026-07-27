@@ -562,6 +562,136 @@ async def test_checkout_allowed_for_canceled_subscriber(monkeypatch, fake_store)
     assert url == "https://checkout.example/s"
 
 
+@pytest.mark.parametrize(
+    "status", ["past_due", "unpaid", "incomplete", "trialing", "paused"]
+)
+@pytest.mark.asyncio
+async def test_checkout_blocks_all_live_or_pending_subscribers(
+    monkeypatch, fake_store, status
+):
+    # Not just `active`: a past_due/unpaid/incomplete/trialing subscription still
+    # EXISTS on the Stripe customer, so a second Checkout would open a concurrent
+    # subscription (double billing). Only terminal/absent states may re-checkout.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_team", "price_team_test")
+    fake_store.subs["u"] = {
+        "user_id": "u", "plan_id": "pro", "status": status, "stripe_customer_id": "cus_x"
+    }
+
+    def _fail(**_kw):  # the guard must short-circuit before Stripe is called
+        raise AssertionError(f"create_checkout_session must not run for status={status}")
+
+    monkeypatch.setattr(stripe_client, "create_checkout_session", _fail)
+
+    with pytest.raises(billing_service.ActiveSubscriptionError):
+        await billing_service.create_checkout_url(
+            user_id="u", email="u@example.com", plan_id="team"
+        )
+
+
+@pytest.mark.parametrize("status", ["canceled", "incomplete_expired", "inactive"])
+@pytest.mark.asyncio
+async def test_checkout_allowed_for_terminal_or_placeholder_row(
+    monkeypatch, fake_store, status
+):
+    # `inactive` is the not-null DB default a checkout.session.completed row lands
+    # with before customer.subscription.created arrives. If that subscription
+    # event is delayed/lost, the user has NO live subscription and must still be
+    # able to check out — the guard must not strand them on the placeholder row.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    fake_store.subs["u"] = {
+        "user_id": "u", "plan_id": "free", "status": status, "stripe_customer_id": "cus_x"
+    }
+    monkeypatch.setattr(
+        stripe_client, "create_checkout_session", lambda **kw: "https://checkout.example/s"
+    )
+
+    url = await billing_service.create_checkout_url(
+        user_id="u", email="u@example.com", plan_id="pro"
+    )
+    assert url == "https://checkout.example/s"
+
+
+@pytest.mark.asyncio
+async def test_checkout_passes_time_bucketed_idempotency_key(monkeypatch, fake_store):
+    # A double-submit (two tabs / double-click) races past the DB guard before the
+    # first subscription row lands. A time-bucketed Stripe idempotency key keyed on
+    # (user, price) makes near-simultaneous identical requests return the SAME
+    # session instead of minting a second customer+subscription. It must NOT be a
+    # static key (that would 24h-lock a legitimate later re-subscribe).
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+
+    captured: list[dict] = []
+
+    def _capture(**kw):
+        captured.append(kw)
+        return "https://checkout.example/s"
+
+    monkeypatch.setattr(stripe_client, "create_checkout_session", _capture)
+    # Pin time so two calls share a bucket; a later bucket must differ.
+    monkeypatch.setattr(billing_service.time, "time", lambda: 1_700_000_000.0)
+    await billing_service.create_checkout_url(user_id="u", email="e@x.com", plan_id="pro")
+    await billing_service.create_checkout_url(user_id="u", email="e@x.com", plan_id="pro")
+    monkeypatch.setattr(billing_service.time, "time", lambda: 1_700_000_120.0)
+    await billing_service.create_checkout_url(user_id="u", email="e@x.com", plan_id="pro")
+
+    keys = [c["idempotency_key"] for c in captured]
+    assert keys[0] and keys[0] == keys[1], "same-bucket submits must dedupe"
+    assert keys[2] != keys[0], "a later time bucket must mint a fresh key"
+
+
+def test_create_checkout_session_forwards_idempotency_key(monkeypatch):
+    # The repo adapter must forward the idempotency key to the Stripe SDK.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    captured: dict = {}
+
+    class _Sess:
+        url = "https://checkout.example/s"
+
+    def _create(**kw):
+        captured.update(kw)
+        return _Sess()
+
+    monkeypatch.setattr(stripe_client.stripe.checkout.Session, "create", _create)
+    stripe_client.create_checkout_session(
+        price_id="price_x",
+        customer_email="u@example.com",
+        client_reference_id="u",
+        success_url="https://x/s",
+        cancel_url="https://x/c",
+        idempotency_key="checkout:abc",
+    )
+    assert captured["idempotency_key"] == "checkout:abc"
+
+
+@pytest.mark.asyncio
+async def test_unmapped_active_price_preserves_prior_row(monkeypatch, fake_store):
+    # B4: an active subscription whose price no longer maps to a paid tier (a
+    # STRIPE_PRICE_* misconfig) must NOT downgrade a paying user's row to free —
+    # it must leave the prior row intact so entitlements stay correct.
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+
+    # 1. A correctly-mapped event lands: user is pro/active.
+    good = _sub_event(price_id="price_pro_test", event_id="evt_good", created=1_000)
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: good)
+    await billing_service.handle_webhook(b"{}", "sig")
+    assert fake_store.subs["u-1"]["plan_id"] == "pro"
+
+    # 2. A later active event whose price is now unmapped must be skipped, not
+    #    written as free/active.
+    bad = _sub_event(price_id="price_ROTATED", status="active", event_id="evt_bad", created=2_000)
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: bad)
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "pro", "unmapped price downgraded a paying user"
+    assert row["status"] == "active"
+    ent = await billing_service.get_entitlements("u-1")
+    assert ent.tier == "pro" and ent.can_generate is True
+
+
 @pytest.mark.asyncio
 async def test_active_sub_with_unmapped_price_warns(monkeypatch, fake_store, caplog):
     # A live subscription whose price doesn't map to a paid tier means the
