@@ -55,16 +55,23 @@ def create_checkout_session(
     success_url: str,
     cancel_url: str,
     customer_id: str | None = None,
+    idempotency_key: str | None = None,
 ) -> str:
     """Create a subscription-mode Checkout Session and return its hosted URL.
 
     `client_reference_id` (our Supabase user id) is echoed back on the resulting
     events and stamped into the subscription metadata, so the webhook can map a
     Stripe subscription to a user with no extra lookup.
+
+    `idempotency_key`, when set, is forwarded to Stripe so a duplicate submit
+    (double-click / two tabs) returns the SAME session instead of minting a
+    second customer + subscription. The caller time-buckets it so a deliberate
+    later re-subscribe still gets a fresh session (see service.create_checkout_url).
     """
     try:
         session = stripe.checkout.Session.create(
             api_key=_api_key(),
+            idempotency_key=idempotency_key,
             mode="subscription",
             line_items=[{"price": price_id, "quantity": 1}],
             success_url=success_url,

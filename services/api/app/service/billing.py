@@ -6,7 +6,9 @@ plan tier <-> Stripe price in both directions rather than storing price IDs in
 the database.
 """
 
+import hashlib
 import logging
+import time
 from datetime import UTC, datetime
 from functools import partial
 
@@ -29,6 +31,22 @@ class ActiveSubscriptionError(RuntimeError):
 
 # Stripe subscription statuses that entitle the user to paid features.
 _ACTIVE_STATUSES = frozenset({"active", "trialing"})
+
+# Statuses for which a subscription still EXISTS on the Stripe customer (live or
+# pending payment). Starting a fresh Checkout while one of these is present would
+# open a SECOND concurrent subscription → double billing. Only terminal states
+# (`canceled`, `incomplete_expired`) or the not-null `inactive` placeholder a
+# checkout row lands with before its subscription event arrives — or no row at
+# all — may start a new Checkout; everything else routes to the Billing Portal.
+_CHECKOUT_BLOCKING_STATUSES = frozenset(
+    {"active", "trialing", "past_due", "unpaid", "incomplete", "paused"}
+)
+
+# Coarse time bucket (seconds) for the Checkout idempotency key: a double-submit
+# lands in the same bucket and dedupes to one session, while a deliberate
+# re-subscribe minutes later gets a fresh key (avoiding Stripe's ~24h replay of
+# a now-completed session).
+_CHECKOUT_IDEMPOTENCY_BUCKET_SECONDS = 60
 
 # Stripe subscription events whose object is a Subscription we can sync directly.
 _SUBSCRIPTION_EVENTS = frozenset(
@@ -108,15 +126,19 @@ async def create_checkout_url(*, user_id: str, email: str | None, plan_id: str) 
             "(set STRIPE_PRICE_PRO / STRIPE_PRICE_TEAM)."
         )
     existing = await supabase_billing.get_subscription(user_id)
-    # Guard against double billing: an active subscriber must change plans via the
-    # Billing Portal (which swaps/prorates the existing subscription), not a new
-    # Checkout (which would open a second concurrent subscription).
-    if existing and existing.get("status") in _ACTIVE_STATUSES:
+    # Guard against double billing: a user with a live-or-pending subscription must
+    # change plans via the Billing Portal (which swaps/prorates the existing
+    # subscription), not a new Checkout (which would open a second concurrent one).
+    if existing and existing.get("status") in _CHECKOUT_BLOCKING_STATUSES:
         raise ActiveSubscriptionError(
             "You already have an active subscription. Use 'Manage billing' to "
             "change your plan."
         )
     customer_id = existing.get("stripe_customer_id") if existing else None
+    # The DB guard above lags the webhook, so a rapid double-submit can slip past
+    # it before the first subscription row lands. A time-bucketed idempotency key
+    # makes those near-simultaneous identical requests collapse to one session.
+    idempotency_key = _checkout_idempotency_key(user_id, price_id)
     # The Stripe SDK is synchronous (blocking HTTP). Offload it so the network
     # round-trip doesn't stall the event loop for every other in-flight request.
     return await run_in_threadpool(
@@ -128,8 +150,20 @@ async def create_checkout_url(*, user_id: str, email: str | None, plan_id: str) 
             success_url=settings.billing_success_url,
             cancel_url=settings.billing_cancel_url,
             customer_id=customer_id,
+            idempotency_key=idempotency_key,
         )
     )
+
+
+def _checkout_idempotency_key(user_id: str, price_id: str) -> str:
+    """Deterministic per-(user, price, time-bucket) Checkout idempotency key.
+
+    Buckets by wall-clock minute so a double-submit dedupes but a later
+    re-subscribe mints a fresh session. Hashed to bound length and avoid echoing
+    ids into Stripe's idempotency namespace."""
+    bucket = int(time.time() // _CHECKOUT_IDEMPOTENCY_BUCKET_SECONDS)
+    raw = f"{user_id}:{price_id}:{bucket}"
+    return "checkout:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 async def create_portal_url(*, user_id: str) -> str:
@@ -201,15 +235,19 @@ async def _sync_subscription(
     tier = _price_to_tier(price_id)
 
     # A live, paying subscription whose price maps to "free" means STRIPE_PRICE_*
-    # is unset/misconfigured for this deploy — the customer would be silently
-    # locked out. Surface it loudly rather than writing a wrong entitlement.
+    # is unset/misconfigured for this deploy. Writing plan_id='free' with an
+    # active status would silently DOWNGRADE a paying customer's row and lock them
+    # out. Surface it loudly and skip the write, preserving whatever tier/status
+    # the row already holds, rather than corrupting it from a config error.
     if not deleted and tier == "free" and sub_obj.get("status") in _ACTIVE_STATUSES:
         logger.warning(
             "Active subscription %s price=%s did not map to a paid tier — check "
-            "STRIPE_PRICE_PRO / STRIPE_PRICE_TEAM.",
+            "STRIPE_PRICE_PRO / STRIPE_PRICE_TEAM. Skipping sync to avoid "
+            "downgrading a paying customer.",
             sub_obj.get("id"),
             price_id,
         )
+        return
 
     # Stripe's 2025 "basil" API moved current_period_end from the Subscription
     # onto each subscription item; fall back to the legacy top-level field for
