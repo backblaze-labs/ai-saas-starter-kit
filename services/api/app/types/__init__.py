@@ -1,13 +1,20 @@
 from app.types.errors import ErrorResponse
-from app.types.files import FileMetadata, FileMetadataDetail
+from app.types.files import FileMetadata
 from app.types.stats import DailyUploadCount, UploadStats
-from app.types.upload import FileUploadResponse
+from app.types.upload import (
+    CompleteUploadRequest,
+    FileUploadResponse,
+    PrepareUploadRequest,
+    PresignedUpload,
+)
 
 __all__ = [
+    "CompleteUploadRequest",
     "DailyUploadCount",
     "ErrorResponse",
     "FileMetadata",
-    "FileMetadataDetail",
     "FileUploadResponse",
+    "PrepareUploadRequest",
+    "PresignedUpload",
     "UploadStats",
 ]

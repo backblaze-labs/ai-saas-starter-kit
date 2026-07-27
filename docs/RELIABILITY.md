@@ -43,7 +43,7 @@ The download counter and the `/metrics` counters are **in-process, per replica**
 ## Graceful Degradation
 
 - File listing returns empty list (not error) when B2 has no objects
-- Metadata extraction failures don't block upload (return partial metadata)
+- A failed browser→B2 upload leaves no server state; the client surfaces the error and the row stays retryable
 - Frontend shows skeleton states while loading, error states on failure
 
 ## Resource Isolation & Limits
@@ -55,31 +55,22 @@ The download counter and the `/metrics` counters are **in-process, per replica**
   starve file I/O or `/health`.
 - **Body size**: an ASGI middleware caps request bodies at `MAX_REQUEST_BODY_SIZE`
   (`413`) before they are buffered — see [SECURITY.md](SECURITY.md#request-body-size-limit).
-- **Upload memory & concurrency**: each upload buffers its **entire body in
-  memory** (`list[bytes]` joined into one `bytes`) before the B2 put — worst-case
-  ~`MAX_FILE_SIZE` of RAM per in-flight upload. Two guards bound the exposure:
-  - The type/extension gate now runs **pre-buffer** in `runtime/upload.py` (via
-    the service helper `check_upload_type`), so a **disallowed** type is rejected
-    with `415` before any body is read. This is the whole win of that gate —
-    **allowed** files are still fully buffered; it does not stream them to B2.
-  - An `asyncio.Semaphore` (`MAX_CONCURRENT_UPLOADS`, default 8) caps how many
-    uploads buffer+process at once, so peak upload memory is bounded by
-    `MAX_CONCURRENT_UPLOADS * MAX_FILE_SIZE` **per worker process**, regardless
-    of request volume; excess requests wait for a slot. It is a **global** cap
-    (all users on a worker share it), so lower it on a memory-constrained
-    instance and raise it if legitimate parallel uploads start queuing.
-  - The gate makes excess uploads **wait**, not fail, so it assumes an
-    upstream/proxy request-read timeout (uvicorn imposes none by default) —
-    otherwise a few slow clients trickling bytes could hold every slot and stall
-    uploads for everyone. Set one at the proxy/edge in production.
-  - To remove the per-file buffering entirely, stream directly to B2 (multipart)
-    — tracked as future work, not done here.
+- **Upload memory**: file bytes **never transit the API**. The browser PUTs them
+  straight to B2 via a presigned URL (`/upload/presign` → PUT → `/upload/complete`),
+  so no endpoint buffers an upload body — the only server-side upload I/O is the
+  `head_object` + a 32-byte Range GET at finalize. This is why `MAX_REQUEST_BODY_SIZE`
+  is now a tight ~1 MB cap (every route takes only small JSON control payloads);
+  there is no per-upload memory bound to tune. Trade-off: the true-size and
+  magic-byte checks run at `/upload/complete`, so an object a client PUTs but never
+  finalizes is unvalidated — see the unconfirmed-object caveat in
+  [SECURITY.md](SECURITY.md#file-surface-authentication--per-user-isolation).
 - **Backblaze client**: explicit connect/read timeouts, capped retries, and a
   connection pool sized to the request threadpool, so a hung B2 endpoint fails
   fast instead of tying up threads.
-- **Per-user listing cache**: `_list_all_objects` caches all prefixes (30s TTL,
-  size-capped, invalidated on any upload/delete) so a dashboard load doesn't
-  re-scan a user's prefixes on every request.
+- **Per-user listing cache**: `list_all_objects` (`repo/b2_listing.py`) caches all
+  prefixes (30s TTL, size-capped, single-flight, invalidated on any
+  upload/delete/finalize) so a dashboard load doesn't re-scan a user's prefixes on
+  every request.
 
 ## Deployment
 

@@ -11,27 +11,25 @@ export interface FileMetadata {
   url: string | null;
 }
 
-export interface FileMetadataDetail {
+/** Sent to POST /upload/presign — the intent to upload, no bytes. */
+export interface PrepareUploadRequest {
   filename: string;
+  content_type: string;
   size_bytes: number;
-  size_human: string;
-  mime_type: string;
-  extension: string;
-  md5: string;
-  sha256: string;
-  uploaded_at: string;
-  // Image-specific
-  image_width: number | null;
-  image_height: number | null;
-  exif: Record<string, string> | null;
-  // PDF-specific
-  pdf_pages: number | null;
-  pdf_author: string | null;
-  pdf_title: string | null;
-  // Audio/Video
-  duration_seconds: number | null;
-  codec: string | null;
-  bitrate: number | null;
+}
+
+/** A short-lived presigned PUT the browser uses to upload straight to B2. */
+export interface PresignedUpload {
+  upload_url: string;
+  key: string;
+  method: string;
+  /** Headers the browser must replay on the PUT (currently Content-Type). */
+  headers: Record<string, string>;
+}
+
+/** Sent to POST /upload/complete once the browser's PUT to B2 succeeds. */
+export interface CompleteUploadRequest {
+  key: string;
 }
 
 export interface FileUploadResponse {
@@ -42,7 +40,6 @@ export interface FileUploadResponse {
   content_type: string;
   uploaded_at: string;
   url: string | null;
-  metadata: FileMetadataDetail | null;
 }
 
 export interface DailyUploadCount {
