@@ -233,6 +233,111 @@ async def test_generate_502_when_pipeline_raises(client, monkeypatch, fake_store
     assert fake_store.jobs["job-1"]["status"] == "failed"
 
 
+# --- post-success persistence: never strand a job, never leak errors -------
+
+
+@pytest.mark.asyncio
+async def test_generate_marks_failed_when_finalize_write_raises(
+    client, monkeypatch, fake_store
+):
+    """G1: if the running->succeeded transition (complete_job) fails after a paid,
+    B2-written run, the job must not linger as 'running' — it is best-effort marked
+    failed and the caller gets a clean 502, not a 500 with a stuck job."""
+    _auth_as(monkeypatch, tier="pro")
+    monkeypatch.setattr(generation_pipeline, "is_configured", lambda: True)
+    monkeypatch.setattr(generation_pipeline, "generate_image", lambda **kw: _fake_result())
+
+    async def complete_job(job_id, **patch):
+        # The success transition blips; the best-effort failed-write still lands.
+        if patch.get("status") == "succeeded":
+            raise RuntimeError("postgrest 503 finalizing job")
+        fake_store.jobs.setdefault(job_id, {}).update(patch)
+
+    monkeypatch.setattr(supabase_generation, "complete_job", complete_job)
+
+    resp = await client.post(
+        "/generation/generate",
+        headers={"Authorization": "Bearer x"},
+        json={"prompt": "a red bicycle"},
+    )
+    assert resp.status_code == 502
+    assert fake_store.jobs["job-1"]["status"] == "failed", "job stranded as running"
+
+
+@pytest.mark.asyncio
+async def test_generate_stays_succeeded_when_secondary_write_fails(
+    client, monkeypatch, fake_store
+):
+    """G1: a blip in a SECONDARY bookkeeping write (usage event) after the job is
+    already succeeded and the asset is in B2 must NOT flip the job to failed — that
+    would tell the user it failed and prompt a re-generate → double provider spend.
+    The job stays succeeded, the asset is returned, the error is only logged."""
+    _auth_as(monkeypatch, tier="pro")
+    monkeypatch.setattr(generation_pipeline, "is_configured", lambda: True)
+    monkeypatch.setattr(generation_pipeline, "generate_image", lambda **kw: _fake_result())
+
+    async def record_usage_event(row):
+        raise RuntimeError("postgrest 503 recording usage")
+
+    monkeypatch.setattr(supabase_generation, "record_usage_event", record_usage_event)
+
+    resp = await client.post(
+        "/generation/generate",
+        headers={"Authorization": "Bearer x"},
+        json={"prompt": "a red bicycle"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "succeeded"
+    assert len(resp.json()["assets"]) == 1
+    assert fake_store.jobs["job-1"]["status"] == "succeeded"
+    assert fake_store.usage_events == [], "usage write should have failed"
+
+
+@pytest.mark.asyncio
+async def test_generate_does_not_leak_provider_error_text(client, monkeypatch, fake_store):
+    """G2: raw provider/SDK exception text (which can embed keys or signed URLs)
+    must never reach the 502 body or the stored job.error (readable via
+    GET /generation/jobs). It is logged server-side only."""
+    _auth_as(monkeypatch, tier="pro")
+    monkeypatch.setattr(generation_pipeline, "is_configured", lambda: True)
+    secret = "nvcf_key_sk-SECRET-abc123 at https://internal.example/v1?token=leak"
+
+    def boom(**kw):
+        raise RuntimeError(secret)
+
+    monkeypatch.setattr(generation_pipeline, "generate_image", boom)
+    resp = await client.post(
+        "/generation/generate",
+        headers={"Authorization": "Bearer x"},
+        json={"prompt": "x"},
+    )
+    assert resp.status_code == 502
+    assert "SECRET" not in resp.text and "token=leak" not in resp.text
+    stored_error = fake_store.jobs["job-1"].get("error") or ""
+    assert "SECRET" not in stored_error and "token=leak" not in stored_error
+
+
+@pytest.mark.asyncio
+async def test_generate_no_asset_error_is_generic(client, monkeypatch, fake_store):
+    """G2: the provider's own error_summary() on a no-asset run is SDK-originated
+    and must not be surfaced verbatim either — the stored/returned error is generic."""
+    _auth_as(monkeypatch, tier="pro")
+    monkeypatch.setattr(generation_pipeline, "is_configured", lambda: True)
+    monkeypatch.setattr(
+        generation_pipeline,
+        "generate_image",
+        lambda **kw: _fake_result(assets=[], failed=1, error="raw sdk detail token=leak"),
+    )
+    resp = await client.post(
+        "/generation/generate",
+        headers={"Authorization": "Bearer x"},
+        json={"prompt": "x"},
+    )
+    assert resp.status_code == 502
+    assert "token=leak" not in resp.text
+    assert "token=leak" not in (fake_store.jobs["job-1"].get("error") or "")
+
+
 # --- route: per-user daily quota -------------------------------------------
 
 

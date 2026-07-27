@@ -53,7 +53,13 @@ and its outputs also appear in the B2-backed file manager.
   thread can't be force-killed) can't starve file I/O or `/health`. NVIDIA
   returns the image inline (base64); the sink transfers it + a manifest to B2.
 - Service marks the job `succeeded`, mirrors each asset into `public.files`,
-  records the provider run + a usage event, and returns the job.
+  records the provider run + a usage event, and returns the job. The
+  running→terminal transition (`complete_job`) is guarded on its own: if it fails
+  after a paid, B2-written run the job is best-effort marked `failed` and the
+  caller gets a clean `502` — a job never lingers as `running`. The **secondary**
+  bookkeeping writes (provider run, file rows, usage event) log-and-continue on
+  failure and never flip an already-`succeeded` job to `failed` (that would prompt
+  a re-generate → double provider spend).
 - The UI renders each asset via a short-lived presigned preview URL (by B2 key)
   — the same path the file manager uses, so it works with or without
   `B2_PUBLIC_URL_BASE`.
@@ -64,7 +70,10 @@ and its outputs also appear in the B2-backed file manager.
   fetch shows a retry, never the locked card (a transient blip must not lock a
   paying user out).
 - Over the daily quota → `429` before the provider is called (no wasted credits).
-- Provider failure / no asset → job persisted as `failed`, endpoint `502`.
+- Provider failure / no asset → job persisted as `failed`, endpoint `502`. The
+  response and the stored `job.error` (readable via `GET /generation/jobs`) carry
+  a **generic** message; raw provider/SDK text — which can embed API keys or
+  signed URLs — is logged server-side only, never surfaced.
 - Private bucket (no public URL base) → assets still render (presigned preview).
 
 ## UX States (if applicable)
@@ -79,7 +88,9 @@ and its outputs also appear in the B2-backed file manager.
   `apps/web/e2e/generate.spec.ts`.
 - Required cases: 402 (Free), 503 (no key), happy path persists
   job+files+usage, failed-run → 502, list jobs, genblaze-only-in-repo,
-  no-network SDK signature guard.
+  no-network SDK signature guard, finalize-write failure → job marked failed
+  (not stranded `running`), secondary-write failure → job stays `succeeded`
+  (no double-spend), and provider error text never leaked to the client/DB.
 - Quick verify command: `pnpm test:api && pnpm check:structure`
 - Full verify command: `pnpm lint && pnpm build && pnpm test:api && pnpm test:e2e`
   (the live e2e generation test needs `NVIDIA_API_KEY` + Stripe/Supabase config;
