@@ -163,6 +163,113 @@ async def test_ttl_zero_disables_cache(auth_service, monkeypatch):
     assert auth_service._identity_cache == {}  # nothing stored
 
 
+@pytest.mark.asyncio
+async def test_revoked_token_on_warm_cache_is_rejected(auth_service, monkeypatch):
+    """A1: on a warm identity-cache hit the token isn't re-validated by fetch_user,
+    so the live role call is the only place an expired/revoked token surfaces. A
+    401/403 there (TokenRejected) must REJECT the request (not default to role
+    'user') and evict the cached identity so the stale token can't re-authorize."""
+    from app.repo import supabase_auth
+
+    monkeypatch.setattr(settings, "auth_cache_ttl_seconds", 30)
+    state = {"reject": False, "user_calls": 0}
+
+    async def fake_fetch_user(_token):
+        state["user_calls"] += 1
+        return {"id": "u-1", "email": "a@b.co"}
+
+    async def fake_fetch_profile_role(_token, _uid):
+        if state["reject"]:
+            raise supabase_auth.TokenRejected()
+        return "user"
+
+    monkeypatch.setattr(supabase_auth, "fetch_user", fake_fetch_user)
+    monkeypatch.setattr(supabase_auth, "fetch_profile_role", fake_fetch_profile_role)
+
+    # 1. Warm the cache with a valid request.
+    assert (await auth_service.user_from_token("tok")).id == "u-1"
+    assert state["user_calls"] == 1
+
+    # 2. Token now revoked/expired → live role call 401s → reject + evict.
+    state["reject"] = True
+    assert await auth_service.user_from_token("tok") is None
+    assert auth_service._identity_cache == {}, "cached identity not evicted on reject"
+
+    # 3. After eviction the next attempt goes cold (re-validates via fetch_user).
+    state["reject"] = False
+    assert (await auth_service.user_from_token("tok")).id == "u-1"
+    assert state["user_calls"] == 2
+
+
+@pytest.mark.asyncio
+async def test_transient_role_fetch_failure_does_not_log_out(auth_service, monkeypatch):
+    """A transient 5xx on the role call (repo returns None, NOT TokenRejected)
+    must degrade to the default role — never evict the identity or 401 the user.
+    This is the regression guard against a PostgREST blip mass-logging users out."""
+    monkeypatch.setattr(settings, "auth_cache_ttl_seconds", 30)
+    # role=None models a 5xx/empty result (the repo maps both to None).
+    counts = _counting_repo_stubs(monkeypatch, user={"id": "u-1", "email": None}, role=None)
+
+    result = await auth_service.user_from_token("tok")
+    assert result == AuthUser(id="u-1", email=None, role="user")
+    assert counts["role"] == 1
+    # Identity stays cached — a transient failure is not a rejection.
+    assert auth_service._identity_cache != {}
+
+
+def test_effective_ttl_is_clamped_to_ceiling(auth_service, monkeypatch):
+    """A2: a misconfigured large AUTH_CACHE_TTL_SECONDS is capped so identity
+    staleness stays bounded (token validity is enforced live regardless)."""
+    monkeypatch.setattr(settings, "auth_cache_ttl_seconds", 100_000)
+    assert auth_service._effective_ttl() == auth_service._AUTH_CACHE_TTL_CEILING
+    monkeypatch.setattr(settings, "auth_cache_ttl_seconds", 30)
+    assert auth_service._effective_ttl() == 30
+    monkeypatch.setattr(settings, "auth_cache_ttl_seconds", 0)
+    assert auth_service._effective_ttl() == 0  # 0 still disables the cache
+
+
+@pytest.mark.asyncio
+async def test_fetch_profile_role_maps_status_codes(monkeypatch):
+    """The load-bearing 401/403-vs-5xx split the cache-eviction fix hinges on,
+    tested against real HTTP responses (not stubbed at the service boundary):
+    a rejected token raises TokenRejected; a transient 5xx (or an empty result)
+    returns None so the caller degrades to the default role rather than logging
+    the user out."""
+    import httpx
+
+    from app.repo import http_client, supabase_auth
+
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", "https://db.example")
+    monkeypatch.setattr(supabase_auth.settings, "supabase_anon_key", "anon")
+
+    def use_response(status: int, body) -> httpx.AsyncClient:
+        client = httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _req: httpx.Response(status, json=body))
+        )
+        monkeypatch.setattr(http_client, "get_client", lambda: client)
+        return client
+
+    async def role_for(status: int, body):
+        client = use_response(status, body)
+        try:
+            return await supabase_auth.fetch_profile_role("tok", "u-1")
+        finally:
+            await client.aclose()
+
+    assert await role_for(200, [{"role": "admin"}]) == "admin"
+    assert await role_for(200, []) is None  # no profile row
+    assert await role_for(500, {}) is None  # transient — degrade, don't reject
+    assert await role_for(503, {}) is None
+
+    for code in (401, 403):
+        client = use_response(code, {})
+        try:
+            with pytest.raises(supabase_auth.TokenRejected):
+                await supabase_auth.fetch_profile_role("tok", "u-1")
+        finally:
+            await client.aclose()
+
+
 def test_cache_is_bounded_and_purges_expired_first(auth_service, monkeypatch):
     """The store caps the cache: expired entries are purged first, and if still
     at capacity the soonest-to-expire live entry is evicted — so token churn

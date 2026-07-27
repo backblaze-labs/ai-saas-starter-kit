@@ -25,11 +25,15 @@ Security principles and implementation for the ai-saas-starter-kit.
   memory). This drops one of the two per-request Supabase round-trips on a warm hit. The
   role/authorization decision (`/rest/v1/profiles`) is **never cached** — it is fetched
   live on every request, so a demoted admin loses access immediately (no
-  privilege-escalation window). Tradeoff: what the cache skips is the identity/liveness
-  check, so a token is honored for up to the TTL past its **expiry or revocation** (not
-  just rotation) — bounded and low-risk here because Supabase access tokens are already
-  bearer-valid until their own ~1h `exp` regardless of logout, and **privilege escalation
-  is impossible** (a stale admin token's live role fetch fails and downgrades to `user`).
+  privilege-escalation window). Because that live call carries the same bearer token,
+  it also re-checks liveness: an **expired token 401/403s there even on a warm cache
+  hit**, and the handler then evicts the cached identity and rejects the request (`401`)
+  rather than defaulting to role `user` — so the cache does **not** extend a token's life
+  past its own `exp`. A transient PostgREST `5xx` (as opposed to a `401/403`) is treated
+  as an unknown role and fails safe to `user` **without** evicting or logging the caller
+  out, so a backend blip can't mass-sign-out valid users. The residual staleness is
+  therefore limited to identity fields (e.g. email) for up to the TTL, which is itself
+  clamped to a ceiling (300s) regardless of a misconfigured `AUTH_CACHE_TTL_SECONDS`.
   Set `AUTH_CACHE_TTL_SECONDS=0` to disable the cache and revalidate identity on every
   request.
 - **Row Level Security** is enabled on `profiles` and `roles`: a user reads/updates only

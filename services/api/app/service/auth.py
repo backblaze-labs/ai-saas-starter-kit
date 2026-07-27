@@ -22,10 +22,22 @@ from app.types.auth import AuthUser
 _IDENTITY_CACHE_MAX = 10_000  # cap distinct cached tokens (bounds memory)
 _identity_cache: dict[str, tuple[float, tuple[str, str | None]]] = {}
 
+# Upper bound on the effective identity-cache TTL, regardless of the configured
+# AUTH_CACHE_TTL_SECONDS. Token *validity* is enforced live on every request (an
+# expired/revoked token is rejected by the 401/403 eviction below), so this only
+# bounds how long a since-changed identity (e.g. a new email) is served — a
+# misconfigured large TTL can't stretch that to hours.
+_AUTH_CACHE_TTL_CEILING = 300.0
+
 
 def _reset_cache() -> None:
     """Drop all cached identities (test hook)."""
     _identity_cache.clear()
+
+
+def _effective_ttl() -> float:
+    """The configured identity-cache TTL, clamped to a safe ceiling."""
+    return min(settings.auth_cache_ttl_seconds, _AUTH_CACHE_TTL_CEILING)
 
 
 def _token_key(access_token: str) -> str:
@@ -62,7 +74,7 @@ async def user_from_token(access_token: str) -> AuthUser | None:
     authorization decision is never stale. Returns None when the token is
     missing/invalid so callers can raise 401.
     """
-    ttl = settings.auth_cache_ttl_seconds
+    ttl = _effective_ttl()
     key = _token_key(access_token) if ttl > 0 else None
 
     identity = _cached_identity(key) if key is not None else None
@@ -76,5 +88,14 @@ async def user_from_token(access_token: str) -> AuthUser | None:
 
     user_id, email = identity
     # Role/authorization is fetched live on EVERY request — see module docstring.
-    role = await supabase_auth.fetch_profile_role(access_token, user_id) or "user"
+    # A warm cache hit skips fetch_user (the signature/expiry check), so this live
+    # call is also where an expired/revoked token is caught: the repo raises
+    # TokenRejected on a 401/403, and we evict the cached identity and reject the
+    # request so a stale token can't keep authenticating within the TTL.
+    try:
+        role = await supabase_auth.fetch_profile_role(access_token, user_id) or "user"
+    except supabase_auth.TokenRejected:
+        if key is not None:
+            _identity_cache.pop(key, None)
+        return None
     return AuthUser(id=user_id, email=email, role=role)
