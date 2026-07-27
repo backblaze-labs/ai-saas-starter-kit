@@ -89,10 +89,15 @@ pnpm test:web          # frontend unit tests (vitest)
 pnpm lint:api          # backend lint (ruff)
 pnpm test:api          # backend tests (pytest)
 pnpm check:structure   # structural boundary tests
-pnpm test:e2e          # Playwright e2e tests
+pnpm test:e2e          # Playwright e2e tests (local / pre-release only — see below)
 ```
 
-CI (`.github/workflows/ci.yml`) runs these gates on every PR and push to `main`.
+CI (`.github/workflows/ci.yml`) runs the lint, type-check/build, unit, and
+structural gates on every PR and push to `main`: `lint`, `build`, `test:web`,
+`lint:api`, `test:api`, `check:structure`. **`test:e2e` is NOT in CI** — the
+Playwright journeys need the full stack (Supabase + API + Stripe CLI + mailpit),
+which isn't wired into CI yet; run it locally as a pre-release gate (see
+`docs/exec-plans/tech-debt-tracker.md`).
 
 ## 7. Agent Workflow
 

@@ -146,7 +146,11 @@ class JSONFormatter(logging.Formatter):
         if hasattr(record, "request_id"):
             log_entry["request_id"] = record.request_id
         if record.exc_info and record.exc_info[1]:
+            # Keep the message for quick scanning, but also emit the full
+            # traceback — this is the single sink for unhandled 500s, and a bare
+            # message ("B2 exploded") gives no file/line to debug from.
             log_entry["exception"] = str(record.exc_info[1])
+            log_entry["traceback"] = self.formatException(record.exc_info)
         return json.dumps(log_entry)
 
 
