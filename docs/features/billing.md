@@ -23,7 +23,7 @@ reusable plan-gating dependency that locks features behind a tier.
 
 ## Canonical Files
 - Backend flow: `runtime/billing.py` (thin) → `service/billing.py` → `repo/{stripe_client,supabase_billing}.py`
-- DB + RLS: `supabase/migrations/20260708191053_billing_plans_subscriptions.sql`
+- DB + RLS: `supabase/migrations/00000000000000_init.sql` (billing section)
 - Plan-gating exemplar: `require_plan("pro")` guarding `GET /billing/pro/preview`
 
 ## Inputs
@@ -39,12 +39,32 @@ reusable plan-gating dependency that locks features behind a tier.
 - Side effect: entitlements (`tier`, `can_generate`) recomputed from the synced row.
 
 ## Flow
-- User clicks **Upgrade** → `POST /billing/checkout` creates a subscription-mode
-  Checkout Session (user id in `client_reference_id` + subscription metadata) →
-  browser redirects to Stripe → pays with test card `4242 4242 4242 4242`.
+- A **Free** user clicks **Upgrade** → `POST /billing/checkout` creates a
+  subscription-mode Checkout Session (user id in `client_reference_id` +
+  subscription metadata) → browser redirects to Stripe → pays with test card
+  `4242 4242 4242 4242`.
+- An **existing subscriber** changing plans is routed to the **Billing Portal**
+  (which swaps/prorates the current subscription), not a new Checkout. The
+  checkout endpoint hard-guards this too: `409` if the caller already has a
+  live-or-pending subscription (`active`, `trialing`, `past_due`, `unpaid`,
+  `incomplete`, or `paused` — not just `active`), because a second Checkout
+  would open a *concurrent* Stripe subscription and double-bill. Terminal states
+  (`canceled`, `incomplete_expired`) and the `inactive` placeholder a
+  checkout-completed row lands with before its subscription event arrives may
+  still start a fresh Checkout.
+- The DB guard lags the webhook, so checkout also passes Stripe a **time-bucketed
+  idempotency key** keyed on `(user, price, minute)`: a rapid double-submit (two
+  tabs / double-click) collapses to one session instead of minting a second
+  customer + subscription, while a deliberate re-subscribe minutes later still
+  gets a fresh session.
 - Stripe POSTs `customer.subscription.*` to `/billing/webhook` → signature
   verified → event deduped via `stripe_events` → subscription upserted into
   Supabase with the tier derived from the price id.
+- `checkout.session.completed` (fired in the same instant) writes **only** the
+  Stripe id mapping (`stripe_customer_id`, `stripe_subscription_id`) so the
+  portal works immediately. It never writes `plan_id`/`status` — tier and status
+  are owned solely by `customer.subscription.*`, so the two events can be
+  processed in either order without one downgrading the other.
 - `require_plan("pro")` reads the user's entitlements and 402s when the tier is
   below the minimum; the Billing page mirrors this with a locked/unlocked card.
 - **Manage billing** → `POST /billing/portal` → redirect to the Stripe portal.
@@ -56,20 +76,54 @@ reusable plan-gating dependency that locks features behind a tier.
   the `4242…` test-card hint on the Billing page, so it never shows in live mode.
 - Bad/absent webhook signature → `400`; missing `STRIPE_WEBHOOK_SECRET` → `503`.
 - Duplicate event id → no-op (`{"status":"duplicate"}`).
-- Unknown/unpriced plan on checkout → `400`.
+- Unknown/unpriced plan on checkout → `400`. Live-or-pending subscriber on checkout → `409` (use the portal).
+- A live subscription whose price maps to no tier (misconfigured `STRIPE_PRICE_*`) is logged as a WARNING and the sync is **skipped** (the prior row is preserved) rather than downgrading a paying customer to `free`, so a config error can't corrupt a good entitlement.
 - `customer.subscription.deleted` → downgrades the user to `free` (status `canceled`).
+- Event ordering: `checkout.session.completed` and `customer.subscription.created`
+  race on the same per-user row. Because checkout writes only id columns (and the
+  merge-upsert overwrites only the columns it sends), a paid `pro`/`active` row is
+  never clobbered back to `free`/`incomplete` regardless of which lands last.
+- Out-of-order subscription events: Stripe does not guarantee ordered delivery, so
+  a stale/retried `customer.subscription.*` can arrive after a newer one. Each
+  subscription event carries the Stripe **event** `created` (unix seconds), stored
+  as `subscriptions.last_event_created_at`. The webhook applies events through the
+  `apply_subscription_event` Postgres function (via PostgREST RPC), whose
+  `ON CONFLICT` branch fires only when the incoming event is same-or-newer (or
+  ordering is impossible — first event on the row, or a missing timestamp). A
+  staler event is a no-op DB-side, so the freshness check is atomic and cannot
+  race under concurrent deliveries (no read-compare-write in the API). The
+  checkout id-only path keeps its plain merge-upsert. `event.created` is
+  second-granular and the compare is `>=`, so two genuinely distinct events in
+  the *same second* are last-delivered-wins — an inherent limit, acceptable
+  because same-second state flips are rare and idempotent retries are caught by
+  `stripe_events`.
+- **Applying this schema change:** the `last_event_created_at` column and
+  `apply_subscription_event` function live in the consolidated init migration
+  (`00000000000000_init.sql`). A DB that already ran an earlier `init.sql` will
+  **not** pick them up from `supabase start` / `supabase db push` (that version
+  is recorded as applied) — run `supabase db reset` locally, or reset/recreate
+  the hosted DB, after pulling. A fresh clone gets them on first `supabase start`.
 
 ## UX States
 - Empty/Free: three plan cards, current plan = `FREE`, Pro preview locked.
 - Loading: "Loading plans…", "Opening…", "Checking your plan…".
-- Error: toast on checkout/portal failure (503 → configuration hint).
+- Error: toast on checkout/portal failure (503 → configuration hint). The Pro-
+  feature preview card shows "locked" only on a `402`; any other error (500/
+  timeout) shows a retry, so a transient blip never tells a paying user they're
+  locked (`isPlanGated` in `lib/query-helpers.ts`).
 
 ## Verification
 - Test files: `services/api/tests/test_billing.py`, `apps/web/e2e/billing.spec.ts`
   (+ `e2e/helpers/stripe-webhook.ts`).
 - Required cases: webhook signature verify (good/bad/missing secret), idempotent
   sync, deletion→downgrade, `require_plan` 402/allow, checkout 503-without-config,
-  and the live e2e webhook upgrade unlocking Pro.
+  `checkout.session.completed` not clobbering an active paid row (either ordering)
+  and recording the id mapping without unlocking, out-of-order subscription events
+  (stale=no-op, newer applies, first-on-new-row applies, missing timestamp applies)
+  plus the RPC-payload shape for `apply_subscription_event`, and the live e2e
+  webhook upgrade unlocking Pro. NOTE: the SQL freshness guard itself is not
+  executed by the hermetic pytest suite (no live Postgres) — it is covered by the
+  RPC-payload assertion and manual/e2e DB runs.
 - Quick verify command: `pnpm test:api` (billing unit tests, hermetic).
 - Full verify command: `supabase start` + `pnpm dev`, then `pnpm test:e2e`.
   The webhook-upgrade e2e also needs `STRIPE_WEBHOOK_SECRET` +

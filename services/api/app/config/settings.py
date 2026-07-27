@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     # every plans/subscriptions read/write, so it is required at startup (main.py).
     supabase_service_role_key: str = ""
 
+    # Short-TTL cache for the per-request Supabase IDENTITY lookup
+    # (GET /auth/v1/user), keyed by a hash of the bearer token. Cuts one of the
+    # two auth round-trips on a warm hit. Only identity (user id + email) is
+    # cached — the role/authorization decision is ALWAYS fetched live, so a
+    # demoted admin loses access immediately. Tradeoff: a revoked/rotated token
+    # stays accepted for up to this many seconds. Set to 0 to disable the cache.
+    auth_cache_ttl_seconds: int = 30
+
     # Stripe billing. All optional to boot: billing endpoints return a clean 503
     # when a key is missing, so the auth + file-manager scaffold runs without
     # Stripe configured. Test-mode keys look like sk_test_… / whsec_…; get them
@@ -75,12 +83,21 @@ class Settings(BaseSettings):
     generation_deadline: int = 120
     # B2 key prefix for generated assets: generated/{user_id}/{date}/{run_id}/...
     generation_prefix: str = "generated"
+    # Max concurrent generations across the process. Runs on a DEDICATED thread
+    # pool (see service/generation.py) so a stuck provider can't starve the
+    # request threadpool that serves file I/O + /health. Keep well under the
+    # request pool size.
+    generation_max_concurrency: int = 4
+    # Soft per-user daily cap on generation attempts (counts jobs created today,
+    # so repeated failures also count — a paid feature spends real provider
+    # credits). 0 disables the cap.
+    generation_daily_limit: int = 50
 
     api_port: int = 8000
-    # Interactive API docs (/docs, /redoc, /openapi.json). On by default for
-    # local dev and starter-kit exploration; set false to hide the full API
-    # surface in production.
-    enable_docs: bool = True
+    # Interactive API docs (/docs, /redoc, /openapi.json). OFF by default so a
+    # production deploy doesn't expose the full API surface. Set ENABLE_DOCS=true
+    # locally for starter-kit exploration.
+    enable_docs: bool = False
     # Explicit allowlist by default — covers Next on :3000 and the
     # fallback :3001 it picks if 3000 is busy. Production deploys should
     # override with the exact frontend origin.
@@ -93,6 +110,20 @@ class Settings(BaseSettings):
 
     # Upload limits
     max_file_size: int = 100 * 1024 * 1024  # 100MB
+    # Max concurrent in-flight uploads across the process. Each upload buffers
+    # its whole body in memory (see docs/RELIABILITY.md), so worst-case upload
+    # memory is bounded by this * max_file_size, PER WORKER PROCESS — the gate
+    # that keeps N large concurrent uploads from OOM-ing a small instance.
+    # Enforced by an asyncio.Semaphore in runtime/upload.py; excess requests
+    # wait for a slot. This is a GLOBAL cap (all users on a worker share it):
+    # lower it on a memory-constrained instance, raise it if legitimate parallel
+    # uploads start queuing. Assumes an upstream/proxy request-read timeout so a
+    # slow client can't pin a slot indefinitely (uvicorn sets none by default).
+    max_concurrent_uploads: int = 8
+    # Hard ceiling on any request body, enforced at the ASGI layer (see
+    # runtime/bodylimit.py) BEFORE FastAPI buffers a multipart upload to disk.
+    # Sized a little above max_file_size to leave room for multipart framing.
+    max_request_body_size: int = 105 * 1024 * 1024  # ~105MB
 
     # Optional confinement for key-addressed reads/deletes. Empty by default so
     # the by-key routes accept any key shape (they deliberately support nested
@@ -111,10 +142,23 @@ class Settings(BaseSettings):
     # Covers uploads, deletes, downloads and previews — kept generous enough
     # that a normal browsing/upload session doesn't trip it.
     rate_limit_write_per_minute: int = 60
+    # Whether to trust `X-Forwarded-For` for the client IP. OFF by default: a
+    # directly-exposed deploy must key the limiter on the real socket peer
+    # (`request.client.host`), because a client can spoof/rotate XFF to mint a
+    # fresh limiter bucket per request and defeat the limit. Enable ONLY when the
+    # app sits behind a known, trusted proxy that appends the real client IP as
+    # the rightmost XFF hop (e.g. Railway); see docs/SECURITY.md.
+    trust_proxy: bool = False
 
     # Small durable counters (downloads, etc). Point at a persistent
     # volume in production if you care about surviving restarts.
     download_count_file: str = "data/download_count.json"
+
+    # Optional bearer token gating /metrics. Empty by default (open — fine for
+    # local dev or a private-network scrape). Set it in a public production
+    # deploy so the metrics surface isn't world-readable; the Prometheus scraper
+    # then sends `Authorization: Bearer <token>`.
+    metrics_token: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

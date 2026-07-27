@@ -13,6 +13,7 @@ audit-log insert is service-role (append-only, no client policy).
 import httpx
 
 from app.config import settings
+from app.repo import http_client
 
 _TIMEOUT = httpx.Timeout(15.0)
 
@@ -32,12 +33,12 @@ def _service_headers() -> dict[str, str]:
 
 
 async def _list(table: str, params: dict) -> list[dict]:
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.get(
-            f"{settings.supabase_url}/rest/v1/{table}",
-            params=params,
-            headers=_service_headers(),
-        )
+    resp = await http_client.get_client().get(
+        f"{settings.supabase_url}/rest/v1/{table}",
+        params=params,
+        headers=_service_headers(),
+        timeout=_TIMEOUT,
+    )
     resp.raise_for_status()
     return resp.json()
 
@@ -48,17 +49,17 @@ async def count(table: str, filters: dict | None = None) -> int:
     `Prefer: count=exact` + a 0-0 range returns the total in `Content-Range`
     (e.g. `0-0/123`, or `*/0` when empty) while transferring only one row.
     """
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.get(
-            f"{settings.supabase_url}/rest/v1/{table}",
-            params=filters or {},
-            headers={
-                **_service_headers(),
-                "Prefer": "count=exact",
-                "Range-Unit": "items",
-                "Range": "0-0",
-            },
-        )
+    resp = await http_client.get_client().get(
+        f"{settings.supabase_url}/rest/v1/{table}",
+        params=filters or {},
+        headers={
+            **_service_headers(),
+            "Prefer": "count=exact",
+            "Range-Unit": "items",
+            "Range": "0-0",
+        },
+        timeout=_TIMEOUT,
+    )
     resp.raise_for_status()
     total = resp.headers.get("content-range", "*/0").rsplit("/", 1)[-1]
     return int(total) if total.isdigit() else 0
@@ -110,12 +111,12 @@ async def list_audit_events(limit: int = 500) -> list[dict]:
 
 async def record_audit_event(row: dict) -> None:
     """Append one audit row (service role; the table has no client write policy)."""
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.post(
-            f"{settings.supabase_url}/rest/v1/admin_audit_events",
-            headers={**_service_headers(), "Prefer": "return=minimal"},
-            json=row,
-        )
+    resp = await http_client.get_client().post(
+        f"{settings.supabase_url}/rest/v1/admin_audit_events",
+        headers={**_service_headers(), "Prefer": "return=minimal"},
+        json=row,
+        timeout=_TIMEOUT,
+    )
     resp.raise_for_status()
 
 
@@ -127,18 +128,18 @@ async def update_user_role(*, user_id: str, role: str, access_token: str) -> dic
     the RLS `profiles_update_admin` policy gates it to admins. Returns the updated
     row, or None if no row matched.
     """
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.patch(
-            f"{settings.supabase_url}/rest/v1/profiles",
-            params={"id": f"eq.{user_id}"},
-            headers={
-                "apikey": settings.supabase_anon_key,
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-                "Prefer": "return=representation",
-            },
-            json={"role": role},
-        )
+    resp = await http_client.get_client().patch(
+        f"{settings.supabase_url}/rest/v1/profiles",
+        params={"id": f"eq.{user_id}"},
+        headers={
+            "apikey": settings.supabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        json={"role": role},
+        timeout=_TIMEOUT,
+    )
     resp.raise_for_status()
     rows = resp.json()
     return rows[0] if rows else None

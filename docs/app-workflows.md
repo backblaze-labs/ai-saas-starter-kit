@@ -11,7 +11,7 @@ User journeys inside the application.
 - Returning user signs in at `/signin` with password **or** an emailed 6-digit code
 - Unauthenticated visits to any protected route redirect to `/signin?next=<path>`
 - `/account` shows the profile (editable name), an admin-only Admin badge, a Connection check, and Sign out
-- The first user to sign up is an admin
+- Signups get the default `user` role; grant admin explicitly via SQL (`update public.profiles set role='admin' where email='…'`)
 - See: [Authentication](features/authentication.md)
 
 ## Subscribe & Manage Billing

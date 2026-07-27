@@ -12,6 +12,7 @@ import hmac
 import json
 import time
 
+import httpx
 import pytest
 from fastapi import HTTPException
 
@@ -39,10 +40,14 @@ def _sub_event(
     status: str = "active",
     event_type: str = "customer.subscription.updated",
     event_id: str = "evt_test_1",
+    created: int | None = 1_700_000_000,
 ) -> dict:
     return {
         "id": event_id,
         "type": event_type,
+        # Stripe EVENT.created (unix seconds) — orders subscription events. Pass
+        # created=None to model a webhook whose timestamp is absent.
+        "created": created,
         "data": {
             "object": {
                 "id": "sub_test_1",
@@ -54,6 +59,26 @@ def _sub_event(
                 "items": {
                     "data": [{"price": {"id": price_id}, "current_period_end": 1893456000}]
                 },
+            }
+        },
+    }
+
+
+def _checkout_event(
+    *,
+    user_id: str = "u-1",
+    customer: str = "cus_test_1",
+    subscription: str | None = "sub_test_1",
+    event_id: str = "evt_checkout_1",
+) -> dict:
+    return {
+        "id": event_id,
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "client_reference_id": user_id,
+                "customer": customer,
+                "subscription": subscription,
             }
         },
     }
@@ -73,7 +98,32 @@ class FakeBillingStore:
         self.events.add(event_id)
 
     async def upsert_subscription(self, row: dict) -> None:
-        self.subs[row["user_id"]] = row
+        # Model PostgREST `resolution=merge-duplicates`: ON CONFLICT DO UPDATE
+        # sets ONLY the columns present in the payload. Columns the payload
+        # omits keep their prior value (on update) or the not-null DB default
+        # (on insert). Replacing the whole row here would hide the very clobber
+        # the checkout/subscription ordering fix is meant to prevent.
+        uid = row["user_id"]
+        # Not-null DB defaults from the subscriptions table, applied only when
+        # the row is first inserted (see the init schema, billing section).
+        db_defaults = {"plan_id": "free", "status": "inactive", "cancel_at_period_end": False}
+        base = self.subs.get(uid) or db_defaults
+        self.subs[uid] = {**base, **row}
+
+    async def apply_subscription_event(self, row: dict, *, event_created_at: int | None) -> None:
+        # Model the `apply_subscription_event` Postgres function's freshness
+        # guard: the ON CONFLICT branch fires only when the incoming event is
+        # same-or-newer, or ordering is impossible (row has no prior event, or
+        # the incoming event has no timestamp). A staler event is a no-op.
+        uid = row["user_id"]
+        existing = self.subs.get(uid)
+        if existing is not None:
+            prev = existing.get("last_event_created_at")
+            if prev is not None and event_created_at is not None and event_created_at < prev:
+                return  # staler event — DB WHERE guard rejects it
+        db_defaults = {"plan_id": "free", "status": "inactive", "cancel_at_period_end": False}
+        base = existing or db_defaults
+        self.subs[uid] = {**base, **row, "last_event_created_at": event_created_at}
 
     async def get_subscription(self, user_id: str) -> dict | None:
         return self.subs.get(user_id)
@@ -82,7 +132,13 @@ class FakeBillingStore:
 @pytest.fixture
 def fake_store(monkeypatch):
     store = FakeBillingStore()
-    for name in ("event_seen", "record_event", "upsert_subscription", "get_subscription"):
+    for name in (
+        "event_seen",
+        "record_event",
+        "upsert_subscription",
+        "apply_subscription_event",
+        "get_subscription",
+    ):
         monkeypatch.setattr(supabase_billing, name, getattr(store, name))
     return store
 
@@ -162,6 +218,218 @@ async def test_webhook_deletion_downgrades_to_free(monkeypatch, fake_store):
     assert row["status"] == "canceled"
 
 
+# --- out-of-order subscription events (event-ordering guard) ---------------
+# Stripe does not guarantee ordered delivery, so a stale/retried
+# customer.subscription.* can arrive after a newer one. The freshness guard
+# lives in the `apply_subscription_event` Postgres function; these tests mock
+# the repo, so they assert the SERVICE threads the event's `created` through and
+# that the guard's semantics (modelled in FakeBillingStore) hold. They do NOT
+# execute the SQL — the guard itself is exercised by the RPC-payload test below
+# plus manual/e2e DB runs.
+
+
+@pytest.mark.asyncio
+async def test_stale_subscription_update_is_noop(monkeypatch, fake_store):
+    """(a) An older customer.subscription.updated arriving AFTER a newer one
+    must not overwrite the newer state."""
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_team", "price_team_test")
+
+    # Newer event lands first: team/active at t=2000.
+    newer = _sub_event(
+        price_id="price_team_test", event_id="evt_new", created=2_000_000_000
+    )
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: newer)
+    await billing_service.handle_webhook(b"{}", "sig")
+    assert fake_store.subs["u-1"]["plan_id"] == "team"
+
+    # Older event (t=1000) is processed last — it downgrades to pro in its
+    # payload but must be rejected by the freshness guard.
+    older = _sub_event(
+        price_id="price_pro_test", event_id="evt_old", created=1_000_000_000
+    )
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: older)
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "team", "stale event clobbered newer tier"
+    assert row["last_event_created_at"] == 2_000_000_000
+
+
+@pytest.mark.asyncio
+async def test_newer_subscription_update_applies(monkeypatch, fake_store):
+    """(b) A newer event arriving after an older one applies normally."""
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_team", "price_team_test")
+
+    older = _sub_event(
+        price_id="price_pro_test", event_id="evt_a", created=1_000_000_000
+    )
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: older)
+    await billing_service.handle_webhook(b"{}", "sig")
+    assert fake_store.subs["u-1"]["plan_id"] == "pro"
+
+    newer = _sub_event(
+        price_id="price_team_test", event_id="evt_b", created=2_000_000_000
+    )
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: newer)
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "team"
+    assert row["last_event_created_at"] == 2_000_000_000
+
+
+@pytest.mark.asyncio
+async def test_first_subscription_event_applies_on_new_row(monkeypatch, fake_store):
+    """(c) The first subscription event on a brand-new row applies (no prior
+    last_event_created_at to compare against)."""
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    evt = _sub_event(event_id="evt_first", created=1_500_000_000)
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: evt)
+
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "pro"
+    assert row["status"] == "active"
+    assert row["last_event_created_at"] == 1_500_000_000
+
+
+@pytest.mark.asyncio
+async def test_absent_event_created_still_applies(monkeypatch, fake_store):
+    """(d) A webhook with no `created` timestamp can't be ordered, so it must
+    still apply (guard treats NULL as 'apply') and land None in the column."""
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    evt = _sub_event(event_id="evt_no_ts", created=None)
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: evt)
+
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "pro"
+    assert row["last_event_created_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_apply_subscription_event_builds_rpc_call(monkeypatch):
+    """The repo must POST the subscription-event upsert to the RPC endpoint with
+    the p_-prefixed function params (incl. the event's created timestamp) and
+    the service-role auth headers. This asserts the request the DB function
+    receives; the SQL guard itself is not executed here (no live Postgres)."""
+    monkeypatch.setattr(supabase_billing.settings, "supabase_url", "https://db.example")
+    monkeypatch.setattr(
+        supabase_billing.settings, "supabase_service_role_key", "svc-role-key"
+    )
+
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["method"] = request.method
+        captured["auth"] = request.headers.get("Authorization")
+        captured["apikey"] = request.headers.get("apikey")
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(204)
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        supabase_billing.httpx,
+        "AsyncClient",
+        lambda **kw: real_client(transport=transport, **kw),
+    )
+
+    row = {
+        "user_id": "u-1",
+        "plan_id": "pro",
+        "status": "active",
+        "stripe_customer_id": "cus_1",
+        "stripe_subscription_id": "sub_1",
+        "current_period_end": "2030-01-01T00:00:00+00:00",
+        "cancel_at_period_end": False,
+    }
+    await supabase_billing.apply_subscription_event(row, event_created_at=1_700_000_000)
+
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://db.example/rest/v1/rpc/apply_subscription_event"
+    assert captured["auth"] == "Bearer svc-role-key"
+    assert captured["apikey"] == "svc-role-key"
+    assert captured["body"] == {
+        "p_user_id": "u-1",
+        "p_plan_id": "pro",
+        "p_status": "active",
+        "p_stripe_customer_id": "cus_1",
+        "p_stripe_subscription_id": "sub_1",
+        "p_current_period_end": "2030-01-01T00:00:00+00:00",
+        "p_cancel_at_period_end": False,
+        "p_event_created_at": 1_700_000_000,
+    }
+
+
+@pytest.mark.asyncio
+async def test_checkout_completed_does_not_clobber_active_subscription(
+    monkeypatch, fake_store
+):
+    """Regression: checkout.session.completed must not downgrade a row that
+    customer.subscription.created already set to an active paid tier.
+
+    Both events fire in the same instant on checkout and upsert the SAME
+    per-user row. Previously checkout.session.completed wrote plan_id/status
+    defaults ('free'/'incomplete') that clobbered the paid row whenever it was
+    processed last, leaving a paying customer locked on Free. It must now touch
+    only the Stripe id columns.
+    """
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+
+    # 1. customer.subscription.created lands first: row becomes pro/active.
+    sub_evt = _sub_event(event_type="customer.subscription.created", event_id="evt_sub")
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: sub_evt)
+    await billing_service.handle_webhook(b"{}", "sig")
+    assert fake_store.subs["u-1"]["plan_id"] == "pro"
+    assert fake_store.subs["u-1"]["status"] == "active"
+
+    # 2. checkout.session.completed is processed last: it must NOT downgrade.
+    monkeypatch.setattr(
+        stripe_client, "construct_event", lambda p, s: _checkout_event(event_id="evt_chk")
+    )
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "pro", "checkout.session.completed clobbered the paid tier"
+    assert row["status"] == "active", "checkout.session.completed clobbered the status"
+    # It still records the id mapping so the billing portal works immediately.
+    assert row["stripe_customer_id"] == "cus_test_1"
+    assert row["stripe_subscription_id"] == "sub_test_1"
+    # Entitlements derived from the row stay unlocked.
+    ent = await billing_service.get_entitlements("u-1")
+    assert ent.tier == "pro" and ent.can_generate is True
+
+
+@pytest.mark.asyncio
+async def test_checkout_completed_persists_mapping_without_unlocking(
+    monkeypatch, fake_store
+):
+    """checkout.session.completed on a brand-new user records the Stripe
+    customer/subscription ids (so the portal works) but must not itself grant a
+    paid tier — that is owned by the customer.subscription.* events. Until one
+    arrives the row keeps the not-null DB defaults and stays locked on Free.
+    """
+    monkeypatch.setattr(
+        stripe_client, "construct_event", lambda p, s: _checkout_event(event_id="evt_new")
+    )
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["stripe_customer_id"] == "cus_test_1"
+    assert row["stripe_subscription_id"] == "sub_test_1"
+    # DB defaults, not an unlock.
+    assert row["plan_id"] == "free"
+    assert row["status"] == "inactive"
+    ent = await billing_service.get_entitlements("u-1")
+    assert ent.tier == "free" and ent.can_generate is False
+
+
 # --- entitlements ----------------------------------------------------------
 
 
@@ -211,6 +479,38 @@ async def test_checkout_requires_stripe_config(monkeypatch):
         )
 
 
+def test_checkout_session_maps_auth_error_to_config_error(monkeypatch):
+    # A present-but-invalid key surfaces as StripeConfigError (503), not a raw
+    # AuthenticationError that would bubble up as a 500.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_bogus")
+
+    def _raise(**_kw):
+        raise stripe_client.stripe.error.AuthenticationError("Invalid API Key")
+
+    monkeypatch.setattr(stripe_client.stripe.checkout.Session, "create", _raise)
+    with pytest.raises(StripeConfigError):
+        stripe_client.create_checkout_session(
+            price_id="price_x",
+            customer_email="u@example.com",
+            client_reference_id="u",
+            success_url="https://x/s",
+            cancel_url="https://x/c",
+        )
+
+
+def test_portal_session_maps_auth_error_to_config_error(monkeypatch):
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_bogus")
+
+    def _raise(**_kw):
+        raise stripe_client.stripe.error.AuthenticationError("Invalid API Key")
+
+    monkeypatch.setattr(stripe_client.stripe.billing_portal.Session, "create", _raise)
+    with pytest.raises(StripeConfigError):
+        stripe_client.create_portal_session(
+            customer_id="cus_x", return_url="https://x/r"
+        )
+
+
 @pytest.mark.asyncio
 async def test_checkout_rejects_unknown_plan(monkeypatch, fake_store):
     monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
@@ -219,6 +519,193 @@ async def test_checkout_rejects_unknown_plan(monkeypatch, fake_store):
         await billing_service.create_checkout_url(
             user_id="u", email="u@example.com", plan_id="enterprise"
         )
+
+
+@pytest.mark.asyncio
+async def test_checkout_blocks_active_subscriber(monkeypatch, fake_store):
+    # An active subscriber must not open a SECOND Checkout — that creates a second
+    # concurrent Stripe subscription (double billing). They get a 409-mapped error
+    # and are routed to the Billing Portal instead.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_team", "price_team_test")
+    fake_store.subs["u"] = {
+        "user_id": "u", "plan_id": "pro", "status": "active", "stripe_customer_id": "cus_x"
+    }
+
+    def _fail(**_kw):  # the guard must short-circuit before Stripe is called
+        raise AssertionError("create_checkout_session must not run for an active sub")
+
+    monkeypatch.setattr(stripe_client, "create_checkout_session", _fail)
+
+    with pytest.raises(billing_service.ActiveSubscriptionError):
+        await billing_service.create_checkout_url(
+            user_id="u", email="u@example.com", plan_id="team"
+        )
+
+
+@pytest.mark.asyncio
+async def test_checkout_allowed_for_canceled_subscriber(monkeypatch, fake_store):
+    # A canceled/inactive user CAN re-subscribe via Checkout (reusing their
+    # customer) — the guard only blocks currently-active subscriptions.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    fake_store.subs["u"] = {
+        "user_id": "u", "plan_id": "free", "status": "canceled", "stripe_customer_id": "cus_x"
+    }
+    monkeypatch.setattr(
+        stripe_client, "create_checkout_session", lambda **kw: "https://checkout.example/s"
+    )
+
+    url = await billing_service.create_checkout_url(
+        user_id="u", email="u@example.com", plan_id="pro"
+    )
+    assert url == "https://checkout.example/s"
+
+
+@pytest.mark.parametrize(
+    "status", ["past_due", "unpaid", "incomplete", "trialing", "paused"]
+)
+@pytest.mark.asyncio
+async def test_checkout_blocks_all_live_or_pending_subscribers(
+    monkeypatch, fake_store, status
+):
+    # Not just `active`: a past_due/unpaid/incomplete/trialing subscription still
+    # EXISTS on the Stripe customer, so a second Checkout would open a concurrent
+    # subscription (double billing). Only terminal/absent states may re-checkout.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_team", "price_team_test")
+    fake_store.subs["u"] = {
+        "user_id": "u", "plan_id": "pro", "status": status, "stripe_customer_id": "cus_x"
+    }
+
+    def _fail(**_kw):  # the guard must short-circuit before Stripe is called
+        raise AssertionError(f"create_checkout_session must not run for status={status}")
+
+    monkeypatch.setattr(stripe_client, "create_checkout_session", _fail)
+
+    with pytest.raises(billing_service.ActiveSubscriptionError):
+        await billing_service.create_checkout_url(
+            user_id="u", email="u@example.com", plan_id="team"
+        )
+
+
+@pytest.mark.parametrize("status", ["canceled", "incomplete_expired", "inactive"])
+@pytest.mark.asyncio
+async def test_checkout_allowed_for_terminal_or_placeholder_row(
+    monkeypatch, fake_store, status
+):
+    # `inactive` is the not-null DB default a checkout.session.completed row lands
+    # with before customer.subscription.created arrives. If that subscription
+    # event is delayed/lost, the user has NO live subscription and must still be
+    # able to check out — the guard must not strand them on the placeholder row.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    fake_store.subs["u"] = {
+        "user_id": "u", "plan_id": "free", "status": status, "stripe_customer_id": "cus_x"
+    }
+    monkeypatch.setattr(
+        stripe_client, "create_checkout_session", lambda **kw: "https://checkout.example/s"
+    )
+
+    url = await billing_service.create_checkout_url(
+        user_id="u", email="u@example.com", plan_id="pro"
+    )
+    assert url == "https://checkout.example/s"
+
+
+@pytest.mark.asyncio
+async def test_checkout_passes_time_bucketed_idempotency_key(monkeypatch, fake_store):
+    # A double-submit (two tabs / double-click) races past the DB guard before the
+    # first subscription row lands. A time-bucketed Stripe idempotency key keyed on
+    # (user, price) makes near-simultaneous identical requests return the SAME
+    # session instead of minting a second customer+subscription. It must NOT be a
+    # static key (that would 24h-lock a legitimate later re-subscribe).
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+
+    captured: list[dict] = []
+
+    def _capture(**kw):
+        captured.append(kw)
+        return "https://checkout.example/s"
+
+    monkeypatch.setattr(stripe_client, "create_checkout_session", _capture)
+    # Pin time so two calls share a bucket; a later bucket must differ.
+    monkeypatch.setattr(billing_service.time, "time", lambda: 1_700_000_000.0)
+    await billing_service.create_checkout_url(user_id="u", email="e@x.com", plan_id="pro")
+    await billing_service.create_checkout_url(user_id="u", email="e@x.com", plan_id="pro")
+    monkeypatch.setattr(billing_service.time, "time", lambda: 1_700_000_120.0)
+    await billing_service.create_checkout_url(user_id="u", email="e@x.com", plan_id="pro")
+
+    keys = [c["idempotency_key"] for c in captured]
+    assert keys[0] and keys[0] == keys[1], "same-bucket submits must dedupe"
+    assert keys[2] != keys[0], "a later time bucket must mint a fresh key"
+
+
+def test_create_checkout_session_forwards_idempotency_key(monkeypatch):
+    # The repo adapter must forward the idempotency key to the Stripe SDK.
+    monkeypatch.setattr(stripe_client.settings, "stripe_secret_key", "sk_test_x")
+    captured: dict = {}
+
+    class _Sess:
+        url = "https://checkout.example/s"
+
+    def _create(**kw):
+        captured.update(kw)
+        return _Sess()
+
+    monkeypatch.setattr(stripe_client.stripe.checkout.Session, "create", _create)
+    stripe_client.create_checkout_session(
+        price_id="price_x",
+        customer_email="u@example.com",
+        client_reference_id="u",
+        success_url="https://x/s",
+        cancel_url="https://x/c",
+        idempotency_key="checkout:abc",
+    )
+    assert captured["idempotency_key"] == "checkout:abc"
+
+
+@pytest.mark.asyncio
+async def test_unmapped_active_price_preserves_prior_row(monkeypatch, fake_store):
+    # B4: an active subscription whose price no longer maps to a paid tier (a
+    # STRIPE_PRICE_* misconfig) must NOT downgrade a paying user's row to free —
+    # it must leave the prior row intact so entitlements stay correct.
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+
+    # 1. A correctly-mapped event lands: user is pro/active.
+    good = _sub_event(price_id="price_pro_test", event_id="evt_good", created=1_000)
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: good)
+    await billing_service.handle_webhook(b"{}", "sig")
+    assert fake_store.subs["u-1"]["plan_id"] == "pro"
+
+    # 2. A later active event whose price is now unmapped must be skipped, not
+    #    written as free/active.
+    bad = _sub_event(price_id="price_ROTATED", status="active", event_id="evt_bad", created=2_000)
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: bad)
+    await billing_service.handle_webhook(b"{}", "sig")
+
+    row = fake_store.subs["u-1"]
+    assert row["plan_id"] == "pro", "unmapped price downgraded a paying user"
+    assert row["status"] == "active"
+    ent = await billing_service.get_entitlements("u-1")
+    assert ent.tier == "pro" and ent.can_generate is True
+
+
+@pytest.mark.asyncio
+async def test_active_sub_with_unmapped_price_warns(monkeypatch, fake_store, caplog):
+    # A live subscription whose price doesn't map to a paid tier means the
+    # STRIPE_PRICE_* env is misconfigured for this deploy — it must be logged
+    # loudly, not silently written as a "free" entitlement.
+    monkeypatch.setattr(billing_service.settings, "stripe_price_pro", "price_pro_test")
+    monkeypatch.setattr(billing_service.settings, "stripe_price_team", "price_team_test")
+    evt = _sub_event(price_id="price_UNMAPPED", status="active", event_id="evt_unmapped")
+    monkeypatch.setattr(stripe_client, "construct_event", lambda p, s: evt)
+
+    with caplog.at_level("WARNING"):
+        await billing_service.handle_webhook(b"{}", "sig")
+
+    assert any("did not map to a paid tier" in r.getMessage() for r in caplog.records)
 
 
 # --- routes via the ASGI client --------------------------------------------

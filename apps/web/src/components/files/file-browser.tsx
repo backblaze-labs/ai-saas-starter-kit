@@ -26,9 +26,16 @@ import { useDeleteFile, useFiles } from "@/lib/queries";
 import { buildFileTree, type TreeFolder } from "@/lib/file-tree";
 import type { FileMetadata } from "@ai-saas-starter-kit/shared";
 
+// Fetch up to the API's max (it caps `limit` at 1000). The previous default of
+// 100 silently hid every file past the first hundred with no indication; at the
+// cap we now tell the user the list is truncated instead of pretending it's all.
+const FILE_LIST_LIMIT = 1000;
+
 export function FileBrowser() {
-  const { data: files = [], isLoading, isFetching, error, refetch } = useFiles();
+  const { data: files = [], isLoading, isFetching, error, refetch } =
+    useFiles(FILE_LIST_LIMIT);
   const deleteMutation = useDeleteFile();
+  const truncated = files.length >= FILE_LIST_LIMIT;
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [previewFile, setPreviewFile] = useState<FileMetadata | null>(null);
@@ -68,7 +75,13 @@ export function FileBrowser() {
   const handleDownload = async (file: FileMetadata) => {
     try {
       const { url } = await getDownloadUrl(file.key);
-      window.open(url, "_blank");
+      // `window.open` after an await is severed from the user gesture and gets
+      // popup-blocked — silently, since a blocked open doesn't throw, so the
+      // catch never fires and the user sees nothing. Navigate in the same tab
+      // instead: the presigned download URL carries
+      // Content-Disposition: attachment, so the browser downloads without
+      // leaving the page.
+      window.location.href = url;
     } catch {
       toast.error("Couldn't get the download link. Please try again.");
     }
@@ -162,6 +175,12 @@ export function FileBrowser() {
                   onDelete={setDeleteTarget}
                 />
               ))}
+              {truncated && (
+                <p className="px-2 pt-2 text-xs text-muted-foreground" role="status">
+                  Showing the first {FILE_LIST_LIMIT.toLocaleString()} files. Use
+                  Upload/folders to organize; older items may not appear here.
+                </p>
+              )}
             </div>
           )}
         </CardContent>

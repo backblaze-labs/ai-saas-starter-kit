@@ -1,10 +1,45 @@
 """Tests for error handling across the API."""
 
+import json
+import logging
+
 import pytest
 
 from app.service import files as files_service
 
 from .conftest import TEST_USER_ID
+
+
+def test_json_formatter_includes_traceback():
+    """The structured-log formatter (the single sink for unhandled 500s) must emit
+    the full traceback, not just the exception message — otherwise a prod 500 logs
+    'B2 exploded' with no file/line to debug from."""
+    import main
+
+    try:
+        raise ValueError("boom detail")
+    except ValueError:
+        import sys
+
+        record = logging.LogRecord(
+            "api", logging.ERROR, __file__, 1, "request failed", None, sys.exc_info()
+        )
+
+    entry = json.loads(main.JSONFormatter().format(record))
+    assert entry["exception"] == "boom detail"  # message preserved for scanning
+    assert "traceback" in entry
+    assert "ValueError: boom detail" in entry["traceback"]
+    assert "test_json_formatter_includes_traceback" in entry["traceback"]  # has frames
+
+
+def test_json_formatter_omits_traceback_without_exc_info():
+    """A normal log line carries no traceback field."""
+    import main
+
+    record = logging.LogRecord("api", logging.INFO, __file__, 1, "ok", None, None)
+    entry = json.loads(main.JSONFormatter().format(record))
+    assert "traceback" not in entry
+    assert "exception" not in entry
 
 
 @pytest.mark.asyncio
@@ -69,7 +104,8 @@ async def test_download_not_found_returns_404(auth_client, monkeypatch):
     monkeypatch.setattr(files_service, "get_file_metadata", lambda key: None)
 
     response = await auth_client.get(
-        f"/files/uploads/{TEST_USER_ID}/missing.txt/download"
+        "/files-by-key/download",
+        params={"key": f"uploads/{TEST_USER_ID}/missing.txt"},
     )
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()

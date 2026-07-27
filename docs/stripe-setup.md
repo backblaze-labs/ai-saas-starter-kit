@@ -73,7 +73,7 @@ Or click through the [Dashboard](https://dashboard.stripe.com/test/products) und
 
 </details>
 
-> The dollar amount is cosmetic for plan-gating — the backend maps the **price id** to a tier, not the amount. The `1900` / `4900` values simply match the plan catalog (`supabase/migrations/…_billing_plans_subscriptions.sql`).
+> The dollar amount is cosmetic for plan-gating — the backend maps the **price id** to a tier, not the amount. The `1900` / `4900` values simply match the plan catalog (in `supabase/migrations/00000000000000_init.sql`, billing section).
 
 ## 3. Get your test-mode secret key
 
@@ -123,7 +123,7 @@ pnpm dev
 
 ## 7. Create test accounts
 
-Sign up at `http://localhost:3000`. Confirmation emails are caught locally by **Mailpit** at `http://127.0.0.1:54324` (nothing is sent to a real inbox) — open the message there to confirm each account. The **first user to sign up becomes an admin**.
+Sign up at `http://localhost:3000`. Confirmation emails are caught locally by **Mailpit** at `http://127.0.0.1:54324` (nothing is sent to a real inbox) — open the message there to confirm each account. Signups get the default `user` role; grant admin explicitly with `update public.profiles set role='admin' where email='you@example.com';` in the Supabase SQL editor.
 
 To exercise plan-gating, create two accounts: your main one (which you'll upgrade to Pro) and a second one that stays on Free.
 

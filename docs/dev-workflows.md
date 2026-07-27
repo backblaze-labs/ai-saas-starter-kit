@@ -125,8 +125,11 @@ deleteMutation.mutate(file.key, {
 });
 ```
 
-`useDeleteFile()` already calls `queryClient.invalidateQueries({ queryKey: qk.all })`
-on success — every consumer of `useFiles` / `useFileStats` re-fetches lazily.
+`useDeleteFile()` already calls `invalidateFileData(queryClient)` on success, which
+invalidates exactly the scoped keys a file mutation can change — the file lists
+(`[...qk.all, "files"]`) and `qk.stats()` (which covers the nested upload-activity
+key) — so consumers of `useFiles` / `useFileStats` re-fetch lazily without blowing
+away unrelated caches (health, entitlements, plans, open preview URLs).
 
 **Add a new endpoint** — three places to touch:
 1. `services/api/app/runtime/<router>.py` — FastAPI route

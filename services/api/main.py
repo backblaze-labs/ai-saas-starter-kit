@@ -17,7 +17,8 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
-from app.config import settings  # noqa: E402
+from app.config import APP_VERSION, settings  # noqa: E402
+from app.repo import http_client  # noqa: E402
 from app.runtime import (  # noqa: E402
     admin,
     auth,
@@ -29,6 +30,7 @@ from app.runtime import (  # noqa: E402
     ratelimit,
     upload,
 )
+from app.runtime.bodylimit import BodySizeLimitMiddleware  # noqa: E402
 
 # --- Startup validation ---
 # Required B2 settings are declared with empty-string defaults so that
@@ -110,7 +112,26 @@ async def lifespan(_app: "FastAPI"):
             + ", ".join(missing_supabase)
             + f". Add them to {REPO_ROOT_ENV} (see .env.example) and restart."
         )
-    yield
+
+    # /metrics is world-readable when no METRICS_TOKEN is set — fine for local
+    # dev or a private-network scrape, but on a public deploy it leaks route
+    # templates and traffic/error volumes. Warn loudly at boot so an operator who
+    # shipped the empty default sees it; the auth logic itself stays untouched.
+    if not settings.metrics_token:
+        logger.warning(
+            "METRICS_TOKEN is empty: /metrics is reachable without "
+            "authentication. Set METRICS_TOKEN on any public deploy so route "
+            "templates and traffic/error volumes are not world-readable."
+        )
+
+    # Open the process-wide Supabase httpx client once so its connection pool is
+    # reused across every request (the auth hot path alone makes two calls per
+    # request); close it on shutdown so the pool drains cleanly.
+    await http_client.init_client()
+    try:
+        yield
+    finally:
+        await http_client.close_client()
 
 # --- Structured JSON logging ---
 
@@ -125,7 +146,11 @@ class JSONFormatter(logging.Formatter):
         if hasattr(record, "request_id"):
             log_entry["request_id"] = record.request_id
         if record.exc_info and record.exc_info[1]:
+            # Keep the message for quick scanning, but also emit the full
+            # traceback — this is the single sink for unhandled 500s, and a bare
+            # message ("B2 exploded") gives no file/line to debug from.
             log_entry["exception"] = str(record.exc_info[1])
+            log_entry["traceback"] = self.formatException(record.exc_info)
         return json.dumps(log_entry)
 
 
@@ -146,7 +171,7 @@ logger = logging.getLogger("api")
 app = FastAPI(
     title="AI SaaS Starter Kit API",
     description="File upload and management API backed by Backblaze B2",
-    version="0.1.0",
+    version=APP_VERSION,
     lifespan=lifespan,
     # Interactive docs are toggleable so production can hide the API surface.
     docs_url="/docs" if settings.enable_docs else None,
@@ -167,8 +192,14 @@ app = FastAPI(
 # masking the real server bug. So: register the inner middleware FIRST, CORS
 # LAST. Do not reorder these two without re-reading this comment.
 
-# Rate limiting (innermost). Registered first so it sits inside timing: a 429
-# is a normal response that timing records and CORS still wraps with headers.
+# Body-size limit (innermost). Registered first so it directly wraps the app:
+# it rejects an oversized body at the ASGI layer BEFORE FastAPI buffers a
+# multipart upload to disk, and its 413 still flows out through timing (recorded)
+# and CORS (headers).
+app.add_middleware(BodySizeLimitMiddleware, max_body_size=settings.max_request_body_size)
+
+# Rate limiting. Registered inside timing: a 429 is a normal response that timing
+# records and CORS still wraps with headers.
 app.add_middleware(BaseHTTPMiddleware, dispatch=ratelimit.rate_limit_middleware)
 
 # Request ID + timing middleware. Its except-clause is the catch-all

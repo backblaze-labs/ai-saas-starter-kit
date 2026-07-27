@@ -24,4 +24,13 @@ describe("safeNextPath", () => {
     expect(safeNextPath("/\\evil.com")).toBe("/");
     expect(safeNextPath("\\\\evil.com")).toBe("/");
   });
+
+  it("rejects control chars the URL parser strips before resolving", () => {
+    // The WHATWG URL parser drops tab/newline/CR, so these collapse to a
+    // protocol-relative "//evil.com" and must be rejected pre-parse.
+    expect(safeNextPath("/\n/evil.com")).toBe("/");
+    expect(safeNextPath("/\r/evil.com")).toBe("/");
+    expect(safeNextPath("/\t/evil.com")).toBe("/");
+    expect(safeNextPath("/\x00/evil.com")).toBe("/");
+  });
 });

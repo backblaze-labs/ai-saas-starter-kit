@@ -92,37 +92,19 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(
-      body.detail || `API error: ${res.status}`,
-      res.status,
-    );
+    // FastAPI 422 returns `detail` as an array of validation objects; coerce any
+    // non-string detail to a status-based message so ApiError.message never
+    // becomes "[object Object]" in logs.
+    const detail =
+      typeof body.detail === "string" ? body.detail : `API error: ${res.status}`;
+    throw new ApiError(detail, res.status);
   }
   return res.json();
 }
 
-function isEndpointUnavailable(error: unknown): error is ApiError {
-  return (
-    error instanceof ApiError &&
-    error.status === 404 &&
-    (error.message === "Not Found" || error.message === "API error: 404")
-  );
-}
-
-async function apiFetchWithLegacyFallback<T>(
-  path: string,
-  legacyPath: () => string,
-  init?: RequestInit
-): Promise<T> {
-  try {
-    return await apiFetch<T>(path, init);
-  } catch (error) {
-    if (isEndpointUnavailable(error)) {
-      return apiFetch<T>(legacyPath(), init);
-    }
-    throw error;
-  }
-}
-
+// Object keys are always sent as a query parameter (never a path segment) so
+// slashes, spaces, and reserved route names like `stats` can't be decoded into
+// a colliding path. The API validates/owns the key server-side.
 function fileKeyQuery(key: string): string {
   if (key.length === 0) {
     throw new ApiError("File key is required", 400);
@@ -130,37 +112,12 @@ function fileKeyQuery(key: string): string {
   return new URLSearchParams({ key }).toString();
 }
 
-function legacyFileKeyPath(
-  key: string,
-  options: { blockRouteCollisions?: boolean } = {}
-): string {
-  if (!isLegacyPathFallbackSafe(key, options)) {
-    throw new ApiError("Current API version required for this file key", 404);
-  }
-  return encodeURIComponent(key);
-}
-
-function isLegacyPathFallbackSafe(
-  key: string,
-  { blockRouteCollisions = false }: { blockRouteCollisions?: boolean } = {}
-): boolean {
-  if (/(\.\.\/|\/\.\.|\\|%2e%2e|%00|\x00)/i.test(key)) return false;
-  if (!blockRouteCollisions) return true;
-
-  const lowerKey = key.toLowerCase();
-  if (lowerKey === "stats" || lowerKey === "stats/activity") return false;
-  if (lowerKey.endsWith("/download") || lowerKey.endsWith("/preview")) return false;
-  return true;
-}
-
 export async function getHealth() {
   return apiFetch<{ status: string; b2_connected: boolean }>("/health");
 }
 
-export async function getFiles(prefix = "", limit = 100) {
-  return apiFetch<FileMetadata[]>(
-    `/files?prefix=${encodeURIComponent(prefix)}&limit=${limit}`
-  );
+export async function getFiles(limit = 100) {
+  return apiFetch<FileMetadata[]>(`/files?limit=${limit}`);
 }
 
 export async function getFileStats() {
@@ -172,34 +129,22 @@ export async function getUploadActivity(days = 7) {
 }
 
 export async function getFile(key: string) {
-  return apiFetchWithLegacyFallback<FileMetadata>(
-    `/files-by-key/metadata?${fileKeyQuery(key)}`,
-    () => `/files/${legacyFileKeyPath(key, { blockRouteCollisions: true })}`
-  );
+  return apiFetch<FileMetadata>(`/files-by-key/metadata?${fileKeyQuery(key)}`);
 }
 
 export async function getDownloadUrl(key: string) {
-  return apiFetchWithLegacyFallback<{ url: string }>(
-    `/files-by-key/download?${fileKeyQuery(key)}`,
-    () => `/files/${legacyFileKeyPath(key)}/download`
-  );
+  return apiFetch<{ url: string }>(`/files-by-key/download?${fileKeyQuery(key)}`);
 }
 
 /** Preview-only presigned URL — does NOT increment the download counter. */
 export async function getPreviewUrl(key: string) {
-  return apiFetchWithLegacyFallback<{ url: string }>(
-    `/files-by-key/preview?${fileKeyQuery(key)}`,
-    () => `/files/${legacyFileKeyPath(key)}/preview`
-  );
+  return apiFetch<{ url: string }>(`/files-by-key/preview?${fileKeyQuery(key)}`);
 }
 
 export async function deleteFile(key: string) {
-  return apiFetchWithLegacyFallback<{ deleted: boolean; key: string }>(
+  return apiFetch<{ deleted: boolean; key: string }>(
     `/files-by-key?${fileKeyQuery(key)}`,
-    () => `/files/${legacyFileKeyPath(key)}`,
-    {
-      method: "DELETE",
-    }
+    { method: "DELETE" }
   );
 }
 

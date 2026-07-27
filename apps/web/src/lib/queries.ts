@@ -1,6 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   ApiError,
   createCheckout,
@@ -47,8 +52,7 @@ import type {
 // "find usages" of `qk.files` reveals every consumer.
 export const qk = {
   all: ["b2"] as const,
-  files: (prefix?: string, limit?: number) =>
-    [...qk.all, "files", prefix ?? "", limit ?? 100] as const,
+  files: (limit?: number) => [...qk.all, "files", limit ?? 100] as const,
   stats: () => [...qk.all, "stats"] as const,
   uploadActivity: (days: number) =>
     [...qk.all, "stats", "activity", days] as const,
@@ -73,10 +77,21 @@ export const qk = {
 
 export type Health = Awaited<ReturnType<typeof getHealth>>;
 
-export function useFiles(prefix = "", limit = 100) {
+// Invalidate exactly the caches a file mutation (upload/delete/generate) can
+// change — the file lists, stats, and upload-activity — and nothing else.
+// Previously mutations invalidated `qk.all` (["b2"]), which force-refetched
+// health, entitlements, plans, and every rendered preview URL on each mutation.
+// `qk.uploadActivity` is nested under `qk.stats`, so invalidating stats covers it.
+export function invalidateFileData(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: [...qk.all, "files"] });
+  qc.invalidateQueries({ queryKey: qk.stats() });
+}
+
+export function useFiles(limit = 100, enabled = true) {
   return useQuery<FileMetadata[], ApiError>({
-    queryKey: qk.files(prefix, limit),
-    queryFn: () => getFiles(prefix, limit),
+    queryKey: qk.files(limit),
+    queryFn: () => getFiles(limit),
+    enabled,
   });
 }
 
@@ -136,11 +151,9 @@ export function useDeleteFile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (fileKey: string) => deleteFile(fileKey),
-    // After delete, blow away every cached file list + stats. Cheap and
-    // correct — the dashboard re-fetches lazily as components remount.
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.all });
-    },
+    // Refetch only the file lists + stats the delete affects — not health,
+    // entitlements, plans, or every open preview URL.
+    onSuccess: () => invalidateFileData(qc),
   });
 }
 
@@ -219,8 +232,10 @@ export function useGenerate() {
   return useMutation<GenerationJob, ApiError, { prompt: string; seed?: number | null }>({
     mutationFn: ({ prompt, seed }) => generateImage(prompt, seed),
     onSuccess: () => {
+      // A generated asset lands in the file manager too, so refresh the job list
+      // AND the file caches — but not unrelated queries.
       qc.invalidateQueries({ queryKey: qk.generationJobs() });
-      qc.invalidateQueries({ queryKey: qk.all });
+      invalidateFileData(qc);
     },
   });
 }

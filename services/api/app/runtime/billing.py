@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.repo.stripe_client import StripeConfigError, StripeSignatureError
 from app.runtime.auth import get_current_user
 from app.service import billing as billing_service
+from app.service.billing import ActiveSubscriptionError
 from app.types.auth import AuthUser
 from app.types.billing import (
     TIER_RANK,
@@ -68,6 +69,8 @@ async def create_checkout(
         )
     except StripeConfigError as e:
         raise HTTPException(status_code=503, detail=str(e)) from None
+    except ActiveSubscriptionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
     return CheckoutResponse(url=url)

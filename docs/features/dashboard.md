@@ -45,6 +45,9 @@ status, storage used, AI generations produced, failed jobs, and recent activity.
 ## Edge Cases
 - API unavailable → error/loading states; the activity chart does not show a
   false zero while loading.
+- A KPI stat card whose query errors renders a muted `—`, never a default
+  `FREE`/`0 B`/`0` — a transient blip must not confidently misreport a paying
+  user's plan or storage.
 - No subscription row → treated as the Free tier (status inactive).
 - No generations yet → empty state in the recent table; counts show 0.
 

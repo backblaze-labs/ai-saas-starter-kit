@@ -119,28 +119,3 @@ def delete_file_by_key_endpoint(
     key: str, current_user: AuthUser = Depends(get_current_user)
 ):
     return _delete_file_response(current_user.id, key)
-
-
-@router.get("/files/{key:path}/download")
-def download_file_endpoint(
-    key: str, current_user: AuthUser = Depends(get_current_user)
-):
-    return _file_url_response(current_user.id, key, preview=False)
-
-
-@router.get("/files/{key:path}/preview")
-def preview_file_endpoint(
-    key: str, current_user: AuthUser = Depends(get_current_user)
-):
-    """Return a presigned URL for inline preview. Does not count as a download."""
-    return _file_url_response(current_user.id, key, preview=True)
-
-
-@router.get("/files/{key:path}", response_model=FileMetadata)
-def get_file_endpoint(key: str, current_user: AuthUser = Depends(get_current_user)):
-    return _file_metadata_response(current_user.id, key)
-
-
-@router.delete("/files/{key:path}")
-def delete_file_endpoint(key: str, current_user: AuthUser = Depends(get_current_user)):
-    return _delete_file_response(current_user.id, key)

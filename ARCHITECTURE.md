@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-15 -->
+<!-- last_verified: 2026-07-21 -->
 # Architecture
 
 ## Components
@@ -87,7 +87,7 @@ services/api/
     `public.stripe_events` (webhook idempotency) — subscription rows are written only
     by the webhook via the service role (RLS lets a user read only their own)
   - Row Level Security scopes reads/writes to the owning user (admins see all)
-  - Schema lives in `supabase/migrations/`; local dev runs the full stack via `supabase start`
+  - Schema lives in a single init file, `supabase/migrations/00000000000000_init.sql` (auth, billing, generation, admin sections); local dev runs the full stack via `supabase start`
 
 ## External Services
 
@@ -109,8 +109,8 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 - **Billing**: Browser -> `POST /billing/checkout` -> Stripe Checkout (redirect) -> Stripe -> `POST /billing/webhook` (signature-verified) -> `service/billing.py` upserts the subscription into Supabase (service role). `require_plan(min_tier)` reads the derived entitlements and 402s below the required tier.
 - **Upload** (direct browser→B2): Browser -> `POST /upload/presign` -> API validates the intent + signs a type-bound PUT URL -> Browser `PUT`s the bytes straight to B2 -> Browser -> `POST /upload/complete` -> API confirms existence, true size, and magic-byte signature (deleting a spoofed object) -> response. Bytes never transit the API, so uploads aren't bounded by a serverless request-body cap.
 - **List**: Browser -> `GET /files` -> service calls repo -> returns file list
-- **Download**: Browser -> `GET /files/{key}/download` -> service validates key -> repo generates presigned URL -> browser downloads
-- **Delete**: Browser -> `DELETE /files/{key}` -> service validates key -> repo deletes from B2
+- **Download**: Browser -> `GET /files-by-key/download?key=...` -> service validates + ownership-scopes the key -> repo generates presigned URL -> browser downloads
+- **Delete**: Browser -> `DELETE /files-by-key?key=...` -> service validates + ownership-scopes the key -> repo deletes from B2
 
 ## Observability
 
@@ -126,6 +126,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 - B2 data access (repo layer): `services/api/app/repo/b2_client.py`
 - Pydantic models: `services/api/app/types/` (`files.py`, `upload.py`, `stats.py`, `formatting.py`)
 - Billing (layered): `services/api/app/runtime/billing.py` → `service/billing.py` → `repo/{stripe_client,supabase_billing}.py`
+- Shared Supabase HTTP pool: `services/api/app/repo/http_client.py` — one process-wide `httpx.AsyncClient` reused by all Supabase adapters, opened/closed in `main.lifespan`
 - Config (pydantic-settings): `services/api/app/config/settings.py`
 - Structural tests: `services/api/tests/test_structure.py`
 - Frontend API client: `apps/web/src/lib/api-client.ts`

@@ -14,8 +14,31 @@ loadEnvConfig(join(process.cwd(), "..", ".."), process.env.NODE_ENV !== "product
 //   s3.<region>.backblazeb2.com             (path-style)
 // One wildcard covers every region + bucket, so this config drops in
 // without per-deployment tweaks.
+// Baseline security response headers applied to every route. Deliberately no
+// Content-Security-Policy: a hardcoded CSP needs env-specific connect-src
+// (Supabase + API origins) and would break the app when deployed elsewhere —
+// clickjacking is already covered by X-Frame-Options: DENY. HSTS uses a 2-year
+// max-age with includeSubDomains; it only takes effect over HTTPS, so it is a
+// no-op on plain-HTTP localhost but pins production to HTTPS once served.
+const securityHeaders = [
+  { key: "X-Frame-Options", value: "DENY" },
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains",
+  },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=()",
+  },
+];
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@ai-saas-starter-kit/shared"],
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
   images: {
     remotePatterns: [
       {

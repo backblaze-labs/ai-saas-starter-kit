@@ -21,7 +21,7 @@ signed-in user, and introduce the first real database (profiles + roles).
 ## Canonical Files
 - Email confirmation landing: `apps/web/src/app/auth/confirm/route.ts` (handles `?code=` and `?token_hash=`)
 - Route protection: `apps/web/src/proxy.ts` + `apps/web/src/lib/supabase/middleware.ts`
-- DB + RLS: `supabase/migrations/20260708170211_auth_profiles_roles.sql`
+- DB + RLS: `supabase/migrations/00000000000000_init.sql` (auth section)
 - API auth: `services/api/app/runtime/auth.py` (thin) → `service/auth.py` → `repo/supabase_auth.py`
 
 ## Inputs
@@ -43,6 +43,15 @@ signed-in user, and introduce the first real database (profiles + roles).
 - Every request passes through `proxy.ts`: no session on a protected route → `/signin?next=…`.
 - Client API calls attach the access token (`lib/api-client.ts`); the API validates it
   against Supabase and reads the caller's role from `profiles` (RLS-scoped).
+- On a hard API `401`, the global TanStack Query error handler (`lib/query-client.tsx`)
+  signs the stale client session out and bounces to `/signin?next=…`. If a *valid*
+  Supabase cookie disagrees with an API that rejects the bearer (misconfig:
+  mismatched JWT secret / wrong Supabase project), a naïve redirect would loop
+  (`/signin` → cookie-based middleware → back into the app → `401` …). Two guards
+  prevent it: the `signOut()` clears the cookie so the middleware stops bouncing,
+  and a short self-expiring `sessionStorage` window (`shouldRedirectToSignin`)
+  suppresses a second redirect so a persistent mismatch surfaces as an inline
+  error instead of an infinite loop.
 
 ## Edge Cases
 - Invalid/expired confirmation link → redirect to `/signin?error=confirmation-failed`.

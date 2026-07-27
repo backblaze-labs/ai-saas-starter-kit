@@ -58,15 +58,6 @@ def test_list_files_follows_continuation_token(monkeypatch):
     assert client.calls == 2  # both pages fetched, not just the first
 
 
-def test_upload_stats_counts_all_pages(monkeypatch):
-    _install_fake_client(monkeypatch)
-
-    stats = b2_client.get_upload_stats()
-
-    assert stats["total_files"] == 3
-    assert stats["total_size_bytes"] == 30
-
-
 def test_empty_prefix_listing_is_cached(monkeypatch):
     client = _install_fake_client(monkeypatch)
 
@@ -77,13 +68,25 @@ def test_empty_prefix_listing_is_cached(monkeypatch):
     assert client.calls == 2
 
 
-def test_nonempty_prefix_is_not_cached(monkeypatch):
+def test_nonempty_prefix_is_cached(monkeypatch):
     client = _install_fake_client(monkeypatch)
 
-    b2_client.list_files("folder/")
-    b2_client.list_files("folder/")
+    b2_client.list_files("uploads/u-1/")
+    b2_client.list_files("uploads/u-1/")
 
-    # Arbitrary client-supplied prefixes bypass the cache, so both calls scan.
+    # Per-user prefixes ARE cached now (the dashboard's hot path), so the second
+    # call is served from cache — only the first scan hit B2 (2 pages).
+    assert client.calls == 2
+
+
+def test_distinct_prefixes_are_cached_independently(monkeypatch):
+    client = _install_fake_client(monkeypatch)
+
+    b2_client.list_files("uploads/u-1/")
+    b2_client.list_files("uploads/u-2/")
+
+    # Different prefixes are separate cache entries, so each scans once (2 pages
+    # apiece) — one user's cached listing never serves another's.
     assert client.calls == 4
 
 

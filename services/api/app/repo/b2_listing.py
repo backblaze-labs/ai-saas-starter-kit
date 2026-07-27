@@ -1,10 +1,11 @@
 """Full-bucket object listing with a short-TTL, single-flight cache.
 
-Extracted from ``b2_client`` to keep each module focused (and under the file-size
-limit). The dashboard and stats endpoints scan the whole bucket repeatedly; this
-collapses concurrent/duplicate scans into one and caches the empty-prefix result
-briefly. ``get_s3_client`` is imported lazily inside the fetch to avoid a circular
-import with ``b2_client`` (which imports the listing helpers back).
+Extracted from ``b2_client`` to keep each module under the file-size limit once
+the direct-to-B2 upload helpers landed. The dashboard and stats endpoints scan
+the same per-user prefixes repeatedly; this collapses concurrent/duplicate scans
+into one and caches each prefix's result briefly. ``get_s3_client`` is imported
+lazily inside the fetch to avoid an import cycle with ``b2_client`` (which imports
+these helpers back).
 """
 
 import time
@@ -14,13 +15,17 @@ from botocore.exceptions import ClientError
 
 from app.config import settings
 
-# Only the empty prefix is cached — caching client-supplied `?prefix=` values
-# would grow unbounded. Thread-safe: the B2 handlers run in Starlette's
-# threadpool.
+# Short-TTL cache for object listings, keyed by prefix. Caching ALL prefixes (not
+# just the empty one) is what collapses the dashboard's per-user scans (files +
+# stats + activity all hit uploads/{uid}/ + generated/{uid}/) into one B2 round-
+# trip. Bounded by _LIST_CACHE_MAX. Invalidation is global (any upload/delete
+# clears every prefix) — coarse but correct; per-user invalidation is future work
+# (tech-debt-tracker). Thread-safe: B2 handlers run in Starlette's threadpool.
 _LIST_CACHE_TTL_SECONDS = 30.0
+_LIST_CACHE_MAX = 1000  # cap distinct cached prefixes (bounds memory)
 _list_cache: dict[str, tuple[float, list[dict]]] = {}
 _list_cache_lock = Lock()  # guards _list_cache and _list_generation
-_list_scan_lock = Lock()  # single-flight: one bucket scan at a time
+_list_scan_lock = Lock()  # single-flight: one cold-cache scan at a time
 _list_generation = 0  # bumped on invalidation to void in-flight scans
 
 
@@ -44,6 +49,15 @@ def _cached_listing(prefix: str) -> list[dict] | None:
     return None
 
 
+def _store_listing(prefix: str, contents: list[dict]) -> None:
+    """Cache `contents` for `prefix`, evicting the oldest entry when at capacity."""
+    with _list_cache_lock:
+        if prefix not in _list_cache and len(_list_cache) >= _LIST_CACHE_MAX:
+            oldest = min(_list_cache, key=lambda k: _list_cache[k][0])
+            del _list_cache[oldest]
+        _list_cache[prefix] = (time.monotonic(), contents)
+
+
 def list_all_objects(prefix: str = "") -> list[dict]:
     """Paginate through every object under `prefix`, with single-flight caching.
 
@@ -52,33 +66,28 @@ def list_all_objects(prefix: str = "") -> list[dict]:
     cached — callers must treat it as read-only (never sort/mutate in place).
     Raises RuntimeError on S3 failure.
     """
-    # Non-empty prefixes are neither cached nor deduplicated; routing them
-    # through the single-flight lock would serialize unrelated scans for no
-    # benefit. Scan directly (bounded by rate limiting).
-    if prefix != "":
-        return _fetch_all_objects(prefix)
-
     hit = _cached_listing(prefix)
     if hit is not None:
         return hit
 
-    # Single-flight: serialize the (empty-prefix) dashboard scans so a
-    # cold/expired/invalidated entry can't trigger a thundering herd. Waiters
-    # re-check the cache and reuse the winner's result.
+    # Single-flight: serialize cold-cache scans so an expired/invalidated entry
+    # can't trigger a thundering herd (the dashboard fires three endpoints that
+    # scan the same prefix at once). Waiters re-check the cache and reuse it.
     with _list_scan_lock:
+        hit = _cached_listing(prefix)
+        if hit is not None:
+            return hit
         with _list_cache_lock:
-            cached = _list_cache.get(prefix)
-            if cached is not None and time.monotonic() - cached[0] < _LIST_CACHE_TTL_SECONDS:
-                return cached[1]
             generation = _list_generation
 
         contents = _fetch_all_objects(prefix)  # scan under the single-flight lock
 
+        # Only store if nothing invalidated the cache mid-scan, else we'd cache a
+        # pre-mutation snapshot.
         with _list_cache_lock:
-            # Only store if nothing invalidated the cache mid-scan, else we'd
-            # cache a pre-mutation snapshot.
-            if generation == _list_generation:
-                _list_cache[prefix] = (time.monotonic(), contents)
+            stale = generation != _list_generation
+        if not stale:
+            _store_listing(prefix, contents)
         return contents
 
 

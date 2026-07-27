@@ -24,9 +24,9 @@ import { dirname, resolve } from "node:path";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const envPath = resolve(root, ".env");
 
-// Paid plans. Amounts (cents) match the plan catalog seeded in
-// supabase/migrations/20260708191053_billing_plans_subscriptions.sql so the
-// Stripe price and the app's plan tier line up.
+// Paid plans. Amounts (cents) match the plan catalog seeded in the billing
+// section of supabase/migrations/00000000000000_init.sql so the Stripe price
+// and the app's plan tier line up.
 const PLANS = [
   { name: "Pro", amount: 1900, lookupKey: "ai_media_pro_monthly", envVar: "STRIPE_PRICE_PRO" },
   { name: "Team", amount: 4900, lookupKey: "ai_media_team_monthly", envVar: "STRIPE_PRICE_TEAM" },

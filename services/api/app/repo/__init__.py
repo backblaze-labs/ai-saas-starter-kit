@@ -5,7 +5,6 @@ from app.repo.b2_client import (
     get_object_head_bytes,
     get_presigned_upload_url,
     get_presigned_url,
-    get_upload_stats,
     list_files,
     upload_file,
 )
@@ -19,7 +18,6 @@ __all__ = [
     "get_object_head_bytes",
     "get_presigned_upload_url",
     "get_presigned_url",
-    "get_upload_stats",
     "increment_download_count",
     "list_files",
     "upload_file",

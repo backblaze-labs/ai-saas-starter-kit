@@ -19,7 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ui/error-state";
 import { GeneratingLoader } from "@/components/ui/generating-loader";
+import { entitlementViewState } from "@/lib/query-helpers";
 import {
   Card,
   CardContent,
@@ -65,7 +67,7 @@ function GeneratedImage({ asset }: { asset: GeneratedAsset }) {
 
 function LockedCard() {
   return (
-    <Card data-testid="generate-locked">
+    <Card className="card-standard" data-testid="generate-locked">
       <CardHeader>
         <div className="flex items-center gap-2">
           <Lock className="h-5 w-5 text-muted-foreground" />
@@ -102,7 +104,7 @@ function JobCard({ job }: { job: GenerationJob }) {
           No image
         </div>
       )}
-      <CardContent className="space-y-2 pt-4">
+      <CardContent className="space-y-2 py-4">
         <p className="line-clamp-2 text-sm" title={job.prompt}>
           {job.prompt}
         </p>
@@ -123,6 +125,9 @@ export default function GeneratePage() {
   const [seed, setSeed] = useState("");
   const [latest, setLatest] = useState<GenerationJob | null>(null);
 
+  // Never treat a failed entitlements fetch as "locked" — that would tell a
+  // paying user to upgrade on a transient blip. Show a retry instead.
+  const entState = entitlementViewState(entitlements);
   const canGenerate = entitlements.data?.can_generate ?? false;
 
   function onSubmit(e: React.FormEvent) {
@@ -155,14 +160,21 @@ export default function GeneratePage() {
         </p>
       </header>
 
-      {entitlements.isPending ? (
+      {entState === "loading" ? (
         <Skeleton className="h-40 w-full" />
+      ) : entState === "error" ? (
+        <ErrorState
+          error={entitlements.error}
+          title="Couldn't check your plan"
+          description="We couldn't load your subscription. Retry in a moment."
+          onRetry={() => entitlements.refetch()}
+        />
       ) : !canGenerate ? (
         <LockedCard />
       ) : (
         <>
-          <Card>
-            <CardContent className="pt-6">
+          <Card className="card-standard">
+            <CardContent>
               <form onSubmit={onSubmit} data-testid="generate-form" className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="prompt">Prompt</Label>
@@ -235,6 +247,10 @@ export default function GeneratePage() {
                 <Skeleton className="h-64" />
                 <Skeleton className="h-64" />
               </div>
+            ) : jobs.isError ? (
+              // A failed fetch must not render as an empty state — a user with
+              // generations would see a false "No generations yet" with no retry.
+              <ErrorState error={jobs.error} onRetry={() => jobs.refetch()} />
             ) : jobs.data && jobs.data.length > 0 ? (
               <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 {jobs.data.map((job) => (

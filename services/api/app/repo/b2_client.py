@@ -10,7 +10,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from app.config import settings
+from app.config import APP_VERSION, settings
 from app.repo.b2_listing import _invalidate_list_cache, list_all_objects
 from app.types import FileMetadata
 from app.types.formatting import humanize_bytes
@@ -44,9 +44,16 @@ def get_s3_client():
         region_name=settings.b2_region,
         aws_access_key_id=settings.b2_application_key_id,
         aws_secret_access_key=settings.b2_application_key,
+        # Bound every B2 call (timeouts + capped retries) so a hung endpoint can't
+        # tie up a threadpool thread and starve file I/O / the health check. Pool
+        # sized to the request threadpool (40) so concurrent ops don't queue.
         config=Config(
             signature_version="s3v4",
-            user_agent_extra="b2ai-ai-saas-starter-kit",
+            user_agent_extra=f"b2ai-ai-saas-starter-kit/{APP_VERSION} (backblaze-b2-samples)",
+            connect_timeout=5,
+            read_timeout=30,
+            retries={"max_attempts": 3, "mode": "standard"},
+            max_pool_connections=40,
         ),
     )
 
@@ -166,19 +173,28 @@ def delete_file(key: str) -> None:
 
 
 def get_presigned_url(
-    key: str, filename: str | None = None, expires_in: int = 600
+    key: str,
+    filename: str | None = None,
+    expires_in: int = 600,
+    disposition: str = "attachment",
 ) -> str:
-    """Generate a presigned download URL. Raises RuntimeError on failure."""
+    """Generate a presigned download URL. Raises RuntimeError on failure.
+
+    `disposition`: "attachment" (default) forces a save on real downloads;
+    "inline" lets the preview modal render an image/PDF in-browser. Inline is
+    safe — the URL is on the isolated B2 origin and SVG/HTML are excluded from
+    the upload allow-list, so no allowed type executes script in the app context.
+    """
     client = get_s3_client()
     params: dict = {"Bucket": settings.b2_bucket_name, "Key": key}
     if filename:
         # RFC 5987 encoding for non-ASCII filenames
         encoded = quote(filename, safe="")
         params["ResponseContentDisposition"] = (
-            f"attachment; filename=\"{encoded}\"; filename*=UTF-8''{encoded}"
+            f"{disposition}; filename=\"{encoded}\"; filename*=UTF-8''{encoded}"
         )
     else:
-        params["ResponseContentDisposition"] = "attachment"
+        params["ResponseContentDisposition"] = disposition
     try:
         return client.generate_presigned_url(
             "get_object",
@@ -237,22 +253,3 @@ def get_object_head_bytes(key: str, length: int = 32) -> bytes:
         return response["Body"].read()
     except ClientError as e:
         raise RuntimeError(f"B2 range-get failed for '{key}': {e}") from e
-
-
-def get_upload_stats() -> dict:
-    """Aggregate stats across every object in the bucket.
-
-    Raises RuntimeError on S3 failure.
-    """
-    contents = list_all_objects()
-    total_size = sum(obj["Size"] for obj in contents)
-    today = datetime.now(UTC).date()
-    uploads_today = sum(
-        1 for obj in contents if obj["LastModified"].date() == today
-    )
-    return {
-        "total_files": len(contents),
-        "total_size_bytes": total_size,
-        "total_size_human": humanize_bytes(total_size),
-        "uploads_today": uploads_today,
-    }
