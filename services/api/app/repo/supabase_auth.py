@@ -14,6 +14,13 @@ from app.repo import http_client
 _TIMEOUT = httpx.Timeout(10.0)
 
 
+class TokenRejected(Exception):
+    """Raised when Supabase rejects the bearer token (401/403) on the live role
+    call — distinct from an empty result. On a warm identity-cache hit this is
+    the ONLY signal that the token is expired/revoked, so the caller must reject
+    the request rather than default to a role (see service.user_from_token)."""
+
+
 async def fetch_user(access_token: str) -> dict | None:
     """Return the Supabase user for a bearer token, or None if it is invalid."""
     resp = await http_client.get_client().get(
@@ -41,7 +48,15 @@ async def fetch_profile_role(access_token: str, user_id: str) -> str | None:
         },
         timeout=_TIMEOUT,
     )
+    if resp.status_code in (httpx.codes.UNAUTHORIZED, httpx.codes.FORBIDDEN):
+        # Token is invalid/expired/revoked. Surface it distinctly so a warm
+        # identity-cache hit still rejects, rather than collapsing to None (which
+        # would default to role "user" and authenticate an invalid token).
+        raise TokenRejected()
     if resp.status_code != httpx.codes.OK:
+        # A transient 5xx / other non-200 can't confirm the role; degrade to the
+        # default role (fail-safe, least-privilege) rather than logging the user
+        # out — do NOT treat it as a rejected token.
         return None
     rows = resp.json()
     return rows[0]["role"] if rows else None
