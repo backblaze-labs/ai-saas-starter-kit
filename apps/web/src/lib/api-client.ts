@@ -91,10 +91,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(
-      body.detail || `API error: ${res.status}`,
-      res.status,
-    );
+    // FastAPI 422 returns `detail` as an array of validation objects; coerce any
+    // non-string detail to a status-based message so ApiError.message never
+    // becomes "[object Object]" in logs.
+    const detail =
+      typeof body.detail === "string" ? body.detail : `API error: ${res.status}`;
+    throw new ApiError(detail, res.status);
   }
   return res.json();
 }

@@ -247,6 +247,10 @@ export default function GeneratePage() {
                 <Skeleton className="h-64" />
                 <Skeleton className="h-64" />
               </div>
+            ) : jobs.isError ? (
+              // A failed fetch must not render as an empty state — a user with
+              // generations would see a false "No generations yet" with no retry.
+              <ErrorState error={jobs.error} onRetry={() => jobs.refetch()} />
             ) : jobs.data && jobs.data.length > 0 ? (
               <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 {jobs.data.map((job) => (
