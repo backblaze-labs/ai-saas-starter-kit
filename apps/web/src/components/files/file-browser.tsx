@@ -75,7 +75,13 @@ export function FileBrowser() {
   const handleDownload = async (file: FileMetadata) => {
     try {
       const { url } = await getDownloadUrl(file.key);
-      window.open(url, "_blank");
+      // `window.open` after an await is severed from the user gesture and gets
+      // popup-blocked — silently, since a blocked open doesn't throw, so the
+      // catch never fires and the user sees nothing. Navigate in the same tab
+      // instead: the presigned download URL carries
+      // Content-Disposition: attachment, so the browser downloads without
+      // leaving the page.
+      window.location.href = url;
     } catch {
       toast.error("Couldn't get the download link. Please try again.");
     }

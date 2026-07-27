@@ -71,7 +71,9 @@ and its outputs also appear in the B2-backed file manager.
 - Empty: "No generations yet…" prompt.
 - Loading: `GeneratingLoader` while the model runs + uploads.
 - Locked: Pro-upgrade card for Free users.
-- Error: toast (config 503 / gate 402 / failure).
+- Error: toast (config 503 / gate 402 / failure). A failed "Recent generations"
+  fetch renders an `ErrorState` with Retry — never a false "No generations yet"
+  empty state.
 
 ## Verification
 - Test files: `services/api/tests/test_generation.py`,

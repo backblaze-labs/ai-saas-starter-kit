@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Check, CreditCard, Lock, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, CreditCard, Lock, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ApiError } from "@/lib/api-client";
@@ -13,7 +13,7 @@ import {
   useProPreview,
   useSubscription,
 } from "@/lib/queries";
-import { entitlementViewState } from "@/lib/query-helpers";
+import { entitlementViewState, isPlanGated } from "@/lib/query-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -221,6 +221,8 @@ export default function BillingPage() {
           <div className="flex items-center gap-2">
             {proPreview.isSuccess ? (
               <Sparkles className="h-5 w-5 text-primary" />
+            ) : proPreview.isError && !isPlanGated(proPreview.error) ? (
+              <AlertTriangle className="h-5 w-5 text-muted-foreground" />
             ) : (
               <Lock className="h-5 w-5 text-muted-foreground" />
             )}
@@ -237,6 +239,24 @@ export default function BillingPage() {
             <p className="flex items-center gap-2 text-sm" data-testid="pro-preview-unlocked">
               <Check className="h-4 w-4 shrink-0 text-primary" />
               {proPreview.data.message}
+            </p>
+          ) : proPreview.isError && !isPlanGated(proPreview.error) ? (
+            // Only a 402 means "locked". A transient 500/timeout must not show a
+            // paying user the upgrade copy — offer a retry instead.
+            <p
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+              data-testid="pro-preview-error"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              Couldn&apos;t check your plan.
+              <button
+                type="button"
+                onClick={() => proPreview.refetch()}
+                className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Retry
+              </button>
             </p>
           ) : (
             <p

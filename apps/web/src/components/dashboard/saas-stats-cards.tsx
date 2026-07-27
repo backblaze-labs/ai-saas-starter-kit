@@ -12,12 +12,14 @@ function StatCard({
   title,
   icon: Icon,
   loading,
+  error,
   children,
   stagger,
 }: {
   title: string;
   icon: typeof CreditCard;
   loading: boolean;
+  error?: boolean;
   children: ReactNode;
   stagger: number;
 }) {
@@ -32,7 +34,17 @@ function StatCard({
         </div>
       </CardHeader>
       <CardContent className="pb-5 px-4">
-        {loading ? <Skeleton className="h-8 w-24" /> : children}
+        {loading ? (
+          <Skeleton className="h-8 w-24" />
+        ) : error ? (
+          // A fetch error must not fall through to a "0"/"FREE" default — that
+          // would confidently tell e.g. a paying user they're on Free with 0 B.
+          <span className="stat-value text-muted-foreground" title="Couldn't load">
+            —
+          </span>
+        ) : (
+          children
+        )}
       </CardContent>
     </Card>
   );
@@ -55,22 +67,22 @@ export function SaasStatsCards() {
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <StatCard title="Plan" icon={CreditCard} loading={sub.isLoading} stagger={1}>
+      <StatCard title="Plan" icon={CreditCard} loading={sub.isLoading} error={sub.isError} stagger={1}>
         <div className="flex items-center gap-2">
           <span className="stat-value">{planName}</span>
           {sub.data && <StatusBadge status={sub.data.status} />}
         </div>
       </StatCard>
 
-      <StatCard title="Storage used" icon={HardDrive} loading={stats.isLoading} stagger={2}>
+      <StatCard title="Storage used" icon={HardDrive} loading={stats.isLoading} error={stats.isError} stagger={2}>
         <div className="stat-value">{stats.data?.total_size_human ?? "0 B"}</div>
       </StatCard>
 
-      <StatCard title="Generations" icon={Sparkles} loading={jobs.isLoading} stagger={3}>
+      <StatCard title="Generations" icon={Sparkles} loading={jobs.isLoading} error={jobs.isError} stagger={3}>
         <div className="stat-value">{succeeded}</div>
       </StatCard>
 
-      <StatCard title="Failed generations" icon={AlertTriangle} loading={jobs.isLoading} stagger={4}>
+      <StatCard title="Failed generations" icon={AlertTriangle} loading={jobs.isLoading} error={jobs.isError} stagger={4}>
         <div className="stat-value">{failed}</div>
       </StatCard>
     </div>

@@ -98,7 +98,10 @@ reusable plan-gating dependency that locks features behind a tier.
 ## UX States
 - Empty/Free: three plan cards, current plan = `FREE`, Pro preview locked.
 - Loading: "Loading plans…", "Opening…", "Checking your plan…".
-- Error: toast on checkout/portal failure (503 → configuration hint).
+- Error: toast on checkout/portal failure (503 → configuration hint). The Pro-
+  feature preview card shows "locked" only on a `402`; any other error (500/
+  timeout) shows a retry, so a transient blip never tells a paying user they're
+  locked (`isPlanGated` in `lib/query-helpers.ts`).
 
 ## Verification
 - Test files: `services/api/tests/test_billing.py`, `apps/web/e2e/billing.spec.ts`
