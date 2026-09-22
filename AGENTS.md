@@ -138,6 +138,7 @@ If documentation and implementation conflict, update docs in the same PR. Docume
 | Feature docs | [docs/features/](docs/features/) |
 | User journeys | [docs/app-workflows.md](docs/app-workflows.md) |
 | Engineering workflows and testing | [docs/dev-workflows.md](docs/dev-workflows.md) |
+| Releases and versioning | [docs/dev-workflows.md](docs/dev-workflows.md#releases-and-versioning) |
 | Security principles | [docs/SECURITY.md](docs/SECURITY.md) |
 | Reliability expectations | [docs/RELIABILITY.md](docs/RELIABILITY.md) |
 | Execution plans | [docs/exec-plans/](docs/exec-plans/) |
