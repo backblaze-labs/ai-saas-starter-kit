@@ -336,3 +336,29 @@ export async function setUserRole(userId: string, role: Role) {
     body: JSON.stringify({ role }),
   });
 }
+
+// --- Account Settings --------------------------------------------------------
+
+export type UserSettings = {
+  display_name: string | null;
+  bio: string | null;
+  theme: "light" | "dark" | "system";
+  default_view: "grid" | "list" | "tree";
+  email_on_upload: boolean;
+  warn_near_quota: boolean;
+  quota_threshold: number;
+};
+
+export type UpdateSettingsPayload = Partial<UserSettings>;
+
+export async function getSettings() {
+  return apiFetch<UserSettings>("/account/settings");
+}
+
+export async function updateSettings(payload: UpdateSettingsPayload) {
+  return apiFetch<UserSettings>("/account/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}

@@ -20,6 +20,7 @@ from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from app.config import APP_VERSION, settings  # noqa: E402
 from app.repo import http_client  # noqa: E402
 from app.runtime import (  # noqa: E402
+    account,
     admin,
     auth,
     billing,
@@ -219,12 +220,13 @@ app.add_middleware(
     # *with* credentials. Flip to True only if you switch to cookie-based auth
     # AND have tightened the origin allowlist.
     allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, tags=["auth"])
+app.include_router(account.router, tags=["account"])
 app.include_router(billing.router)
 app.include_router(upload.router, tags=["upload"])
 app.include_router(files.router, tags=["files"])
