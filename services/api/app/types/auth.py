@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AuthUser(BaseModel):
@@ -7,3 +7,5 @@ class AuthUser(BaseModel):
     id: str
     email: str | None = None
     role: str = "user"
+    token: str = Field(exclude=True)  # Never serialize the token in responses
+
