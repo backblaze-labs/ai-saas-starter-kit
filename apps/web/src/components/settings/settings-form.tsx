@@ -3,11 +3,12 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Info } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
+import { useSettings, useUpdateSettings } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -63,27 +64,66 @@ const defaultValues: SettingsValues = {
 };
 
 export function SettingsForm() {
+  const { data: settings, isPending: isLoadingSettings } = useSettings();
+  const updateSettings = useUpdateSettings();
+
   const form = useForm<SettingsValues>({
     resolver: zodResolver(settingsSchema),
     defaultValues,
+    values: settings ? {
+      displayName: settings.display_name || "",
+      bio: settings.bio || "",
+      theme: settings.theme,
+      defaultView: settings.default_view,
+      emailOnUpload: settings.email_on_upload,
+      warnNearQuota: settings.warn_near_quota,
+      quotaThreshold: String(settings.quota_threshold),
+    } : undefined,
   });
 
-  // Saving preferences isn't wired to a backend yet in this starter, so the
-  // form is a read-only preview: no fake "saved" toast, and Save is disabled.
-  const onSubmit = () => {};
+  const onSubmit = (values: SettingsValues) => {
+    updateSettings.mutate(
+      {
+        display_name: values.displayName || null,
+        bio: values.bio || null,
+        theme: values.theme,
+        default_view: values.defaultView,
+        email_on_upload: values.emailOnUpload,
+        warn_near_quota: values.warnNearQuota,
+        quota_threshold: Number(values.quotaThreshold),
+      },
+      {
+        onSuccess: () => {
+          toast.success("Settings saved");
+          // Reset explicitly so form's isDirty state clears (since RHF tracks dirty
+          // state relative to the last values/defaultValues). It will update automatically
+          // via `values` once the invalidation refetches the query, but immediate reset
+          // makes the UI snappy.
+          form.reset(values);
+        },
+        onError: (err) => {
+          toast.error("Failed to save settings", {
+            description: err.message,
+          });
+        },
+      }
+    );
+  };
+
+  if (isLoadingSettings) {
+    return (
+      <div className="flex h-[400px] items-center justify-center rounded-xl border border-border">
+        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <p className="text-sm">Loading settings...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Alert>
-          <Info />
-          <AlertTitle>Preview</AlertTitle>
-          <AlertDescription>
-            Preference saving isn&apos;t wired up in this starter yet — changes
-            here aren&apos;t saved.
-          </AlertDescription>
-        </Alert>
-
         {/* Profile */}
         <Card>
           <CardHeader className="border-b border-border py-4 px-5">
@@ -259,17 +299,21 @@ export function SettingsForm() {
 
         {/* Action bar */}
         <div className="flex items-center justify-end gap-3">
-          <span className="text-xs text-muted-foreground">
-            Saving isn&apos;t available in this starter.
-          </span>
           <Button
             type="button"
             variant="outline"
-            onClick={() => form.reset(defaultValues)}
+            onClick={() => form.reset()}
+            disabled={!form.formState.isDirty || updateSettings.isPending}
           >
-            Reset
+            Cancel
           </Button>
-          <Button type="submit" disabled>
+          <Button 
+            type="submit" 
+            disabled={!form.formState.isDirty || updateSettings.isPending}
+          >
+            {updateSettings.isPending && (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            )}
             Save changes
           </Button>
         </div>

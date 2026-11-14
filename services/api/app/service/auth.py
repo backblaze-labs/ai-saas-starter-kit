@@ -98,4 +98,4 @@ async def user_from_token(access_token: str) -> AuthUser | None:
         if key is not None:
             _identity_cache.pop(key, None)
         return None
-    return AuthUser(id=user_id, email=email, role=role)
+    return AuthUser(id=user_id, email=email, role=role, token=access_token)

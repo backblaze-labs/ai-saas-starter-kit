@@ -44,13 +44,21 @@ on conflict (name) do nothing;
 
 -- Profiles (1:1 with auth.users) ----------------------------------------------
 create table if not exists public.profiles (
-  id         uuid primary key references auth.users (id) on delete cascade,
-  email      text,
-  full_name  text,
-  avatar_url text,
-  role       text not null default 'user' references public.roles (name),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  id               uuid primary key references auth.users (id) on delete cascade,
+  email            text,
+  full_name        text,
+  avatar_url       text,
+  role             text not null default 'user' references public.roles (name),
+  -- User-editable settings (mirrors the Settings page form)
+  display_name     text,
+  bio              text,
+  theme            text    not null default 'system',
+  default_view     text    not null default 'tree',
+  email_on_upload  boolean not null default false,
+  warn_near_quota  boolean not null default true,
+  quota_threshold  int     not null default 80,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
 );
 
 comment on table public.profiles is 'Public profile + role for each authenticated user; mirrors auth.users.';

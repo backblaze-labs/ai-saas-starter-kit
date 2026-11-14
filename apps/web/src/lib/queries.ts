@@ -28,9 +28,11 @@ import {
   getPlans,
   getPreviewUrl,
   getProPreview,
+  getSettings,
   getSubscription,
   getUploadActivity,
   setUserRole,
+  updateSettings,
   type Me,
 } from "@/lib/api-client";
 import type {
@@ -73,6 +75,7 @@ export const qk = {
     providerRuns: () => [...qk.all, "admin", "providerRuns"] as const,
     audit: () => [...qk.all, "admin", "audit"] as const,
   },
+  settings: () => [...qk.all, "settings"] as const,
 };
 
 export type Health = Awaited<ReturnType<typeof getHealth>>;
@@ -320,6 +323,26 @@ export function useSetUserRole() {
       qc.invalidateQueries({ queryKey: qk.admin.users() });
       qc.invalidateQueries({ queryKey: qk.admin.audit() });
       qc.invalidateQueries({ queryKey: qk.admin.overview() });
+    },
+  });
+}
+
+// --- Account Settings --------------------------------------------------------
+
+export function useSettings(enabled = true) {
+  return useQuery({
+    queryKey: qk.settings(),
+    queryFn: getSettings,
+    enabled,
+  });
+}
+
+export function useUpdateSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: updateSettings,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.settings() });
     },
   });
 }

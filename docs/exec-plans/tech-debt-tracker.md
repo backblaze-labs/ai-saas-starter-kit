@@ -16,6 +16,8 @@ webhook exempt from the IP rate-limit, price→free mismatch now logged, PDF inl
 preview, `PyPDF2`→`pypdf`, exact-pinned Python deps + committed `railway.json`,
 and frontend entitlement-error / global-401 handling.
 
+Additionally resolved: Settings page now persists user preferences using `public.profiles` and PostgREST.
+
 Deliberately **deferred** (not ship blockers; recorded here after red-team review):
 
 - **e2e (Playwright) not in CI** — the 4 journey specs need the full stack
@@ -57,7 +59,7 @@ Nitpicks surfaced by the verify pass on the file surface (logged, not blocking; 
 | No `docker-compose.yaml` | Manual venv + dual-process startup slows first run | Add compose with `web` + `api` services and Dockerfiles | Low |
 | `api-client.ts` hand-synced to FastAPI | Endpoint drift between client and server | Note an OpenAPI codegen strategy or link the spec | Low |
 | No dedicated connection-status banner | Offline only surfaced reactively per failed query | Add a global connectivity banner (route + global error boundaries already exist) | Low |
-| Settings page is a non-persisting preview & Danger Zone "Empty bucket" is disabled | Users can't save preferences or empty the bucket from the UI — both are marked "preview"/"not available in this starter" (no misleading fake-success) rather than wired | Persist preferences (a `settings` table or `profiles` columns) + implement a prefix-scoped bucket-empty behind a typed confirm | Low |
+| Danger Zone "Empty bucket" is disabled | Users can't empty the bucket from the UI — it is marked "not available in this starter" rather than wired | Implement a prefix-scoped bucket-empty behind a typed confirm | Low |
 
 ## Resolved
 
