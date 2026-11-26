@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-15 -->
+<!-- last_verified: 2026-11-26 -->
 # Dev Workflows
 
 Engineering workflows for this repo.
@@ -40,6 +40,8 @@ Engineering workflows for this repo.
 - [ ] Run full lint + test suite before submitting
 - [ ] Docs updated in the same PR as code changes
 - [ ] Only change files relevant to the task — no drive-by improvements
+
+Pull requests that change `supabase/migrations/*.sql` or the scanner configuration run [RattleCheck](../.github/workflows/rattlecheck.yml). It runs `rattlecheck@latest` on the base and proposed migrations and flags new high or critical permission findings. The check reads the SQL without starting Supabase or using database credentials.
 
 ## Releases and versioning
 
